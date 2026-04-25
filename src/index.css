@@ -1,0 +1,208 @@
+@import "tailwindcss";
+
+@theme {
+  --color-background: #1a1a2e;
+  --color-foreground: #eaeaea;
+  --color-accent: #7c3aed;
+}
+
+/* ─── Calendar ─────────────────────────────────────────────── */
+
+.calendar-center {
+  width: 100% !important;
+}
+
+.calendar-center .rdp-root {
+  --rdp-accent-color: #7c3aed;
+  --rdp-accent-background-color: #7c3aed;
+  margin: 0 auto;
+  width: 100%;
+}
+
+.calendar-center .rdp-months {
+  width: 100%;
+  justify-content: center;
+}
+
+/* Day button base */
+.rdp-day_button {
+  cursor: pointer !important;
+  width: 32px !important;
+  height: 32px !important;
+  border-radius: 4px !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  margin: 0 auto !important;
+  font-size: 0.8rem !important;
+}
+
+/* Selected day */
+.rdp-day_button[aria-selected="true"],
+.rdp-selected .rdp-day_button {
+  background-color: #7c3aed !important;
+  color: #ffffff !important;
+  border-radius: 4px !important;
+  font-weight: 600 !important;
+}
+
+/* Today (not selected) */
+.rdp-today:not(.rdp-selected) .rdp-day_button {
+  border: 1px solid #7c3aed !important;
+  color: #a78bfa !important;
+}
+
+/* Has-notes modifier: small dot */
+.rdp-day_button.rdp-day--hasNotes::after {
+  display: none;
+}
+
+/* Nav buttons */
+nav.rdp-nav button.rdp-button_previous,
+nav.rdp-nav button.rdp-button_next {
+  color: #ffffff !important;
+  fill: #ffffff !important;
+  border-radius: 4px !important;
+  padding: 4px 8px !important;
+}
+
+nav.rdp-nav button.rdp-button_previous:hover,
+nav.rdp-nav button.rdp-button_next:hover {
+  background-color: rgba(255, 255, 255, 0.15) !important;
+}
+
+nav.rdp-nav .rdp-chevron {
+  fill: #ffffff !important;
+  stroke: #ffffff !important;
+}
+
+/* Caption / Month label */
+.rdp-month_caption {
+  font-size: 0.85rem !important;
+  font-weight: 600 !important;
+}
+
+/* Weekday header */
+.rdp-weekday {
+  font-size: 0.72rem !important;
+  color: #6b7280 !important;
+  width: 32px !important;
+  text-align: center !important;
+}
+
+/* ─── Search snippet highlight ────────────────────────────── */
+
+.search-snippet mark {
+  background-color: #7c3aed;
+  color: white;
+  border-radius: 2px;
+  padding: 0 2px;
+}
+
+/* ─── ProseMirror editor ──────────────────────────────────── */
+
+.ProseMirror {
+  outline: none;
+  min-height: 200px;
+  line-height: 1.7;
+}
+
+.ProseMirror p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  float: left;
+  color: #6b7280;
+  pointer-events: none;
+  height: 0;
+}
+
+/* Prose content styles inside editor */
+.ProseMirror h1 { font-size: 1.75rem; font-weight: 700; margin: 1rem 0 0.5rem; }
+.ProseMirror h2 { font-size: 1.4rem;  font-weight: 600; margin: 0.9rem 0 0.4rem; }
+.ProseMirror h3 { font-size: 1.15rem; font-weight: 600; margin: 0.8rem 0 0.3rem; }
+.ProseMirror h4, .ProseMirror h5, .ProseMirror h6 { font-weight: 600; margin: 0.6rem 0 0.3rem; }
+.ProseMirror ul { list-style: disc;   padding-left: 1.5rem; }
+.ProseMirror ol { list-style: decimal; padding-left: 1.5rem; }
+.ProseMirror blockquote {
+  border-left: 3px solid #7c3aed;
+  padding-left: 1rem;
+  color: #9ca3af;
+  margin: 0.75rem 0;
+}
+.ProseMirror pre {
+  background: #0f0f1a;
+  border-radius: 6px;
+  padding: 0.75rem 1rem;
+  font-family: monospace;
+  overflow-x: auto;
+}
+.ProseMirror code {
+  background: #0f0f1a;
+  border-radius: 3px;
+  padding: 0.1em 0.3em;
+  font-family: monospace;
+  font-size: 0.875em;
+}
+.ProseMirror a { color: #a78bfa; text-decoration: underline; }
+.ProseMirror img { max-width: 100%; border-radius: 4px; margin: 0.5rem 0; }
+.ProseMirror hr { border: none; border-top: 1px solid #374151; margin: 1.5rem 0; }
+
+/* Preview panel uses same styles */
+.note-preview h1 { font-size: 1.75rem; font-weight: 700; margin: 1rem 0 0.5rem; color: #eaeaea; }
+.note-preview h2 { font-size: 1.4rem;  font-weight: 600; margin: 0.9rem 0 0.4rem; color: #eaeaea; }
+.note-preview h3 { font-size: 1.15rem; font-weight: 600; margin: 0.8rem 0 0.3rem; color: #eaeaea; }
+.note-preview h4, .note-preview h5, .note-preview h6 { font-weight: 600; margin: 0.6rem 0 0.3rem; color: #eaeaea; }
+.note-preview ul { list-style: disc;    padding-left: 1.5rem; }
+.note-preview ol { list-style: decimal; padding-left: 1.5rem; }
+.note-preview blockquote {
+  border-left: 3px solid #7c3aed;
+  padding-left: 1rem;
+  color: #9ca3af;
+  margin: 0.75rem 0;
+}
+.note-preview pre {
+  background: #0f0f1a;
+  border-radius: 6px;
+  padding: 0.75rem 1rem;
+  font-family: monospace;
+  overflow-x: auto;
+}
+.note-preview code {
+  background: #0f0f1a;
+  border-radius: 3px;
+  padding: 0.1em 0.3em;
+  font-family: monospace;
+  font-size: 0.875em;
+}
+.note-preview a { color: #a78bfa; text-decoration: underline; }
+.note-preview img { max-width: 100%; border-radius: 4px; margin: 0.5rem 0; }
+
+/* ─── Base ────────────────────────────────────────────────── */
+
+:root {
+  font-family: 'Inter', system-ui, Avenir, Helvetica, Arial, sans-serif;
+  line-height: 1.5;
+  font-weight: 400;
+  color-scheme: dark;
+  color: var(--color-foreground);
+  background-color: var(--color-background);
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+html {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+}
+
+#root {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
