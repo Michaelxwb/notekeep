@@ -6,10 +6,13 @@ on:
       - 'v*'
   workflow_dispatch:
 
+env:
+  NODE_VERSION: '20'
+
 jobs:
-  release:
+  build:
     permissions:
-      contents: write
+      contents: read
 
     strategy:
       fail-fast: false
@@ -25,7 +28,7 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: ${{ env.NODE_VERSION }}
           cache: 'npm'
 
       - name: Install Rust stable
@@ -53,6 +56,47 @@ jobs:
         run: npm ci
 
       - name: Build Tauri app
-        uses: tauri-apps/tauri-action@v0
+        run: npm run tauri build
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: bundles-${{ matrix.platform }}
+          path: |
+            src-tauri/target/release/bundle/dmg/*
+            src-tauri/target/release/bundle/macos/NoteKeep.app
+            src-tauri/target/release/bundle/deb/*
+            src-tauri/target/release/bundle/appimage/*
+            src-tauri/target/release/bundle/rpm/*
+            src-tauri/target/release/bundle/nsis/*
+            src-tauri/target/release/bundle/msi/*
+
+  release:
+    needs: build
+    permissions:
+      contents: write
+
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: List artifacts
+        run: find artifacts -type f | sort
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            artifacts/bundles-macos-latest/dmg/*
+            artifacts/bundles-ubuntu-22.04/deb/*
+            artifacts/bundles-ubuntu-22.04/appimage/*
+            artifacts/bundles-ubuntu-22.04/rpm/*
+            artifacts/bundles-windows-latest/nsis/*
+            artifacts/bundles-windows-latest/msi/*
+          draft: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
