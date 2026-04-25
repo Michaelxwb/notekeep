@@ -1,9 +1,9 @@
 # Project Guidelines
 
 ## Team Identity
-- Team: [team name]
-- Project: [project name]
-- Language: [primary language]
+- Team: NoteKeep
+- Project: NoteKeep (跨平台笔记应用)
+- Language: TypeScript (frontend) + Rust (backend)
 
 ## Core Principles
 - All changes must include tests
@@ -16,6 +16,16 @@
 - Unparameterized SQL
 - Network calls inside tight loops
 
+## Tech Stack
+
+| Layer | Tech |
+|-------|------|
+| Frontend | React 19 + TypeScript + Vite 8 + Tailwind CSS 4 |
+| Backend | Tauri 2.x (Rust) + rusqlite (bundled SQLite) |
+| Editor | @tiptap/react + marked |
+| Search | SQLite FTS5 |
+| i18n | React Context + localStorage |
+
 ## Spec Loading
 This project uses the code-flow two-tier spec system.
 
@@ -26,7 +36,7 @@ This project uses the code-flow two-tier spec system.
 **Your responsibility**:
 1. Determine domain from the question:
    - **frontend**: components, pages, hooks, styles, UI, .tsx/.jsx/.css
-   - **backend**: services, API, database, models, logging, .py/.go
+   - **backend**: Rust/Tauri, db.rs, Cargo.toml, .rs files
 2. Read `.code-flow/specs/<domain>/_map.md` for navigation context
 3. Constraint specs are auto-injected by PreToolUse Hook when you edit code — do NOT manually read them
 4. If question spans multiple domains, read all matching `_map.md` files

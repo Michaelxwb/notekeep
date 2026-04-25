@@ -1,50 +1,75 @@
 # Frontend Retrieval Map
 
-> AI 导航地图：帮助快速定位前端代码结构和关键模块。本文件由 cf-learn --map 生成，可手动补充。
+> AI 导航地图：帮助快速定位前端代码结构和关键模块。
 
 ## Purpose
 
-[一句话描述前端在本项目中的角色，如：基于 React 的单页应用，负责用户交互和数据展示]
+基于 React 19 + Tauri 2 的跨平台笔记应用，负责用户交互、数据展示和 Tauri IPC 调用。
 
 ## Architecture
 
-[技术栈和核心架构模式]
-
-- Framework: [React/Vue/Angular/...]
-- State: [Redux/Zustand/Pinia/...]
-- Routing: [React Router/Vue Router/...]
-- Styling: [Tailwind/CSS Modules/styled-components/...]
-- Build: [Vite/Webpack/Next.js/...]
+- Framework: React 19 + TypeScript
+- State: React useState/useCallback + Context API (useLanguage)
+- Styling: Tailwind CSS 4 + CSS custom properties
+- Build: Vite 8
+- Tauri: 2.x (Rust WebView 混合应用)
+- Editor: @tiptap/react (富文本), marked (markdown 渲染)
+- DnD: @dnd-kit/core + @dnd-kit/sortable
+- Date: date-fns + react-day-picker
 
 ## Key Files
 
 | File | Purpose |
 |------|---------|
-| `src/App.tsx` | 根组件，挂载路由和全局 Provider |
-| `src/main.tsx` | 应用入口，渲染 Root |
+| `src/App.tsx` | 根组件，状态管理，IPC 调用入口 |
+| `src/main.tsx` | 应用入口，挂载 LanguageProvider |
+| `src/hooks/useNotes.ts` | 所有 Tauri invoke 调用的封装 hook |
+| `src/contexts/LanguageContext.tsx` | i18n Context + localStorage 持久化 |
+| `src/i18n.ts` | 中英文翻译映射表 (translations) |
 
 ## Module Map
 
-[按业务域列出模块及其职责，标注入口文件]
-
 ```
 src/
-├── components/    # 通用 UI 组件
-├── pages/         # 页面组件（路由级）
-├── hooks/         # 业务复用逻辑
-├── stores/        # 状态管理
-├── services/      # API 调用层
-├── utils/         # 工具函数
-└── types/         # 类型定义
+├── components/
+│   ├── Sidebar.tsx       # 侧边栏，Notes/Diary Tab，文件夹树，拖拽排序
+│   ├── Editor.tsx       # Markdown 编辑器，三视图模式 (edit/split/preview)
+│   ├── TableOfContents  # 标题导航
+│   ├── DragSortable.tsx # @dnd-kit 排序包装
+│   ├── ContextMenu.tsx  # 右键菜单
+│   ├── Dialog.tsx       # 通用确认弹窗
+│   └── Settings.tsx     # 设置弹窗（语言/导入导出）
+├── contexts/
+│   └── LanguageContext.tsx  # i18n provider
+├── hooks/
+│   └── useNotes.ts      # 所有 Tauri invoke CRUD 封装
+├── i18n.ts              # 中英文翻译表
+└── index.css            # Tailwind + 全局样式
 ```
 
 ## Data Flow
 
-[关键数据流向，如：用户操作 → Action → Store → Component 重渲染]
+```
+用户操作
+  ↓
+React 事件处理 (useCallback)
+  ↓
+Tauri invoke (useNotes hook)
+  ↓
+Rust command handler (lib.rs)
+  ↓
+db.rs (rusqlite) ←→ SQLite
+        ↕
+     FTS5 search
+  ↓
+返回 JSON 到前端
+  ↓
+React 状态更新 → 组件重渲染
+```
 
 ## Navigation Guide
 
-- 新增页面 → `src/pages/` + 路由配置
-- 新增组件 → `src/components/`，按功能域分子目录
-- API 调用 → `src/services/`，不在组件内直接 fetch
-- 状态管理 → `src/stores/`，组件通过 hook 消费
+- 新增组件 → `src/components/`
+- IPC/后端调用 → `src/hooks/useNotes.ts`
+- i18n 文本 → `src/i18n.ts` 添 key，`useLanguage().t()` 调用
+- 样式 → `src/index.css`（Tailwind @theme + ProseMirror 样式）
