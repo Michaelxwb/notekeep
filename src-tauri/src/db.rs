@@ -1,6 +1,6 @@
 use rusqlite::{Connection, Result as SqliteResult, params};
 use std::path::PathBuf;
-use std::sync::Mutex;
+use std::sync::{Mutex, MutexGuard};
 use chrono::Local;
 use uuid::Uuid;
 use base64::Engine as _;
@@ -10,20 +10,31 @@ pub struct Db {
 }
 
 impl Db {
+    fn conn(&self) -> MutexGuard<'_, Connection> {
+        self.conn.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
     pub fn new() -> SqliteResult<Self> {
         let db_path = get_db_path();
         if let Some(parent) = db_path.parent() {
-            std::fs::create_dir_all(parent).ok();
+            std::fs::create_dir_all(parent)
+                .map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
         }
         let conn = Connection::open(&db_path)?;
-        conn.execute_batch("PRAGMA foreign_keys = ON;")?;
+        conn.execute_batch(
+            "PRAGMA foreign_keys = ON;
+             PRAGMA journal_mode = WAL;
+             PRAGMA synchronous = NORMAL;
+             PRAGMA cache_size = -8000;
+             PRAGMA mmap_size = 268435456;"
+        )?;
         let db = Db { conn: Mutex::new(conn) };
         db.init_tables()?;
         Ok(db)
     }
 
     fn init_tables(&self) -> SqliteResult<()> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn();
 
         conn.execute_batch(
             "CREATE TABLE IF NOT EXISTS items (
@@ -92,7 +103,7 @@ impl Db {
     }
 
     pub fn create_item(&self, parent_id: Option<&str>, name: &str, item_type: &str, date: Option<&str>) -> SqliteResult<String> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn();
         let id = Uuid::new_v4().to_string();
         let now = Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
 
@@ -106,7 +117,7 @@ impl Db {
     }
 
     pub fn get_item(&self, id: &str) -> SqliteResult<Option<Item>> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn();
         let mut stmt = conn.prepare(
             "SELECT id, parent_id, name, type, date, content, sort_order, created_at, updated_at
              FROM items WHERE id = ?1"
@@ -130,70 +141,62 @@ impl Db {
     }
 
     pub fn update_item(&self, id: &str, name: Option<&str>, content: Option<&str>, date: Option<&str>) -> SqliteResult<()> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn();
         let now = Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
 
-        if let Some(n) = name {
-            conn.execute(
-                "UPDATE items SET name = ?1, updated_at = ?2 WHERE id = ?3",
-                params![n, now, id],
-            )?;
-        }
-
-        if let Some(c) = content {
-            conn.execute(
-                "UPDATE items SET content = ?1, updated_at = ?2 WHERE id = ?3",
-                params![c, now, id],
-            )?;
-        }
-
-        if let Some(d) = date {
-            conn.execute(
-                "UPDATE items SET date = ?1, updated_at = ?2 WHERE id = ?3",
-                params![d, now, id],
-            )?;
-        }
+        conn.execute(
+            "UPDATE items SET
+                name = COALESCE(?1, name),
+                content = COALESCE(?2, content),
+                date = COALESCE(?3, date),
+                updated_at = ?4
+             WHERE id = ?5",
+            params![name, content, date, now, id],
+        )?;
 
         Ok(())
     }
 
     pub fn delete_item(&self, id: &str) -> SqliteResult<()> {
-        let children: Vec<String> = {
-            let conn = self.conn.lock().unwrap();
+        let mut conn = self.conn();
+
+        // BFS to collect all descendant IDs
+        let mut to_delete = vec![id.to_string()];
+        let mut i = 0;
+        while i < to_delete.len() {
             let mut stmt = conn.prepare("SELECT id FROM items WHERE parent_id = ?1")?;
-            let xs: Vec<String> = stmt.query_map(params![id], |row| row.get(0))?
+            let children: Vec<String> = stmt.query_map(params![to_delete[i]], |row| row.get(0))?
                 .filter_map(|r| r.ok())
                 .collect();
-            xs
-        };
-
-        for child_id in children {
-            self.delete_item(&child_id)?;
+            to_delete.extend(children);
+            i += 1;
         }
 
-        let paths: Vec<String> = {
-            let conn = self.conn.lock().unwrap();
+        // Delete image files from disk before DB transaction
+        for del_id in &to_delete {
             let mut stmt = conn.prepare("SELECT path FROM images WHERE note_id = ?1")?;
-            let xs: Vec<String> = stmt.query_map(params![id], |row| row.get(0))?
+            let paths: Vec<String> = stmt.query_map(params![del_id], |row| row.get(0))?
                 .filter_map(|r| r.ok())
                 .collect();
-            xs
-        };
-
-        for path in paths {
-            let full_path = get_data_dir().join(&path);
-            let _ = std::fs::remove_file(full_path);
+            for path in paths {
+                let full_path = get_data_dir().join(&path);
+                let _ = std::fs::remove_file(full_path);
+            }
         }
 
-        let conn = self.conn.lock().unwrap();
-        conn.execute("DELETE FROM images WHERE note_id = ?1", params![id])?;
-        conn.execute("DELETE FROM items WHERE id = ?1", params![id])?;
+        // Delete all in a single transaction
+        let tx = conn.transaction()?;
+        for del_id in &to_delete {
+            tx.execute("DELETE FROM images WHERE note_id = ?1", params![del_id])?;
+            tx.execute("DELETE FROM items WHERE id = ?1", params![del_id])?;
+        }
+        tx.commit()?;
 
         Ok(())
     }
 
     pub fn move_item(&self, id: &str, new_parent_id: Option<&str>) -> SqliteResult<()> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn();
         let now = Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
 
         conn.execute(
@@ -205,18 +208,20 @@ impl Db {
     }
 
     pub fn reorder_items(&self, items: &[(String, i32)]) -> SqliteResult<()> {
-        let conn = self.conn.lock().unwrap();
+        let mut conn = self.conn();
+        let tx = conn.transaction()?;
         for (id, sort_order) in items {
-            conn.execute(
+            tx.execute(
                 "UPDATE items SET sort_order = ?1 WHERE id = ?2",
                 params![sort_order, id],
             )?;
         }
+        tx.commit()?;
         Ok(())
     }
 
     pub fn list_items(&self, parent_id: Option<&str>, item_type: Option<&str>, date: Option<&str>) -> SqliteResult<Vec<Item>> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn();
 
         let sql = match (parent_id, item_type, date) {
             (Some(_), Some(_), Some(_)) =>
@@ -262,7 +267,7 @@ impl Db {
     }
 
     pub fn list_all_items(&self) -> SqliteResult<Vec<Item>> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn();
         let mut stmt = conn.prepare(
             "SELECT id, parent_id, name, type, date, content, sort_order, created_at, updated_at
              FROM items ORDER BY parent_id NULLS FIRST, sort_order ASC"
@@ -278,7 +283,7 @@ impl Db {
             return Ok(vec![]);
         }
 
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn();
 
         // Wrap each token in quotes for safe literal FTS5 matching
         let fts_query: String = query.split_whitespace()
@@ -337,7 +342,7 @@ impl Db {
         let relative_path = format!("images/{}", saved_name);
         let now = Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
 
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn();
         conn.execute(
             "INSERT INTO images (id, note_id, filename, path, created_at) VALUES (?1, ?2, ?3, ?4, ?5)",
             params![id, note_id, saved_name, relative_path, now],
@@ -347,7 +352,7 @@ impl Db {
     }
 
     pub fn get_image(&self, id: &str) -> SqliteResult<Option<Image>> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn();
         let mut stmt = conn.prepare(
             "SELECT id, note_id, filename, path, created_at FROM images WHERE id = ?1"
         )?;
@@ -437,6 +442,8 @@ impl<T> OptionalExt<T> for SqliteResult<T> {
     }
 }
 
+// ─── Tauri commands ─────────────────────────────────────────
+
 #[tauri::command]
 pub fn create_item(db: tauri::State<Db>, parent_id: Option<String>, name: String, item_type: String, date: Option<String>) -> Result<String, String> {
     db.create_item(parent_id.as_deref(), &name, &item_type, date.as_deref())
@@ -513,27 +520,44 @@ pub fn get_image_base64(path: String) -> Result<String, String> {
 }
 
 fn topological_sort(items: Vec<Item>) -> Vec<Item> {
-    let mut sorted: Vec<Item> = Vec::new();
-    let mut remaining = items;
-    let mut inserted: std::collections::HashSet<String> = std::collections::HashSet::new();
-    let max_iters = remaining.len() + 1;
-    let mut i = 0;
-    while !remaining.is_empty() && i < max_iters {
-        let mut next = Vec::new();
-        for item in remaining {
-            if item.parent_id.is_none()
-                || inserted.contains(item.parent_id.as_deref().unwrap_or(""))
-            {
-                inserted.insert(item.id.clone());
-                sorted.push(item);
-            } else {
-                next.push(item);
+    let n = items.len();
+    let mut items: Vec<Option<Item>> = items.into_iter().map(Some).collect();
+
+    let id_to_idx: std::collections::HashMap<&str, usize> = items
+        .iter()
+        .enumerate()
+        .map(|(i, item)| (item.as_ref().unwrap().id.as_str(), i))
+        .collect();
+
+    let mut children: Vec<Vec<usize>> = vec![vec![]; n];
+    let mut indegree: Vec<usize> = vec![0; n];
+    for (i, item) in items.iter().enumerate() {
+        if let Some(ref pid) = item.as_ref().unwrap().parent_id {
+            if let Some(&p_idx) = id_to_idx.get(pid.as_str()) {
+                children[p_idx].push(i);
+                indegree[i] += 1;
             }
         }
-        remaining = next;
-        i += 1;
     }
-    sorted.extend(remaining); // orphaned items with unknown parent
+
+    let mut queue: Vec<usize> = (0..n).filter(|&i| indegree[i] == 0).collect();
+    let mut sorted: Vec<Item> = Vec::with_capacity(n);
+
+    while let Some(idx) = queue.pop() {
+        sorted.push(items[idx].take().unwrap());
+        for &child in &children[idx] {
+            indegree[child] -= 1;
+            if indegree[child] == 0 {
+                queue.push(child);
+            }
+        }
+    }
+
+    // Append any remaining (cycle orphans) — items still in Option
+    for item in items.into_iter().flatten() {
+        sorted.push(item);
+    }
+
     sorted
 }
 
@@ -556,7 +580,7 @@ pub struct ExportPayload {
 }
 
 fn list_all_images_with_data(db: &Db) -> Result<Vec<ExportImage>, String> {
-    let conn = db.conn.lock().map_err(|e| e.to_string())?;
+    let conn = db.conn();
     let mut stmt = conn
         .prepare("SELECT id, note_id, filename, path, created_at FROM images")
         .map_err(|e| e.to_string())?;
@@ -633,11 +657,11 @@ fn parse_payload(data: &str) -> Result<ExportPayload, String> {
 
 fn import_payload(db: &Db, payload: ExportPayload) -> Result<(usize, usize), String> {
     let sorted = topological_sort(payload.items);
-    let conn = db.conn.lock().map_err(|e| e.to_string())?;
+    let mut conn = db.conn();
+    let tx = conn.transaction().map_err(|e| e.to_string())?;
 
-    // upsert items: 仅当外来 updated_at 更新于本地时覆盖，避免旧数据回滚新数据
     for item in &sorted {
-        conn.execute(
+        tx.execute(
             "INSERT INTO items (id, parent_id, name, type, date, content, sort_order, created_at, updated_at)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
              ON CONFLICT(id) DO UPDATE SET
@@ -673,13 +697,15 @@ fn import_payload(db: &Db, payload: ExportPayload) -> Result<(usize, usize), Str
             std::fs::write(&abs_path, bytes).map_err(|e| e.to_string())?;
         }
 
-        conn.execute(
+        tx.execute(
             "INSERT INTO images (id, note_id, filename, path, created_at)
              VALUES (?1, ?2, ?3, ?4, ?5)
              ON CONFLICT(id) DO NOTHING",
             params![img.id, img.note_id, img.filename, img.path, img.created_at],
         ).map_err(|e| e.to_string())?;
     }
+
+    tx.commit().map_err(|e| e.to_string())?;
 
     Ok((sorted.len(), payload.images.len()))
 }
@@ -703,27 +729,30 @@ pub fn import_data_from_file(db: tauri::State<Db>, path: String) -> Result<(), S
 
 #[tauri::command]
 pub fn backup_database(db: tauri::State<Db>, path: String) -> Result<(), String> {
-    use std::io::Write;
     use zip::write::SimpleFileOptions;
 
     let data_dir = get_data_dir();
 
-    // VACUUM INTO 写一份干净副本到临时位置，避开 WAL/SHM 与并发写
+    // VACUUM INTO 写一份干净副本到临时文件
     let tmp_db = std::env::temp_dir().join(format!("notekeep-backup-{}.db", Uuid::new_v4()));
     {
-        let conn = db.conn.lock().map_err(|e| e.to_string())?;
-        let tmp_str = tmp_db.to_string_lossy().replace('\'', "''");
-        conn.execute_batch(&format!("VACUUM INTO '{}'", tmp_str))
-            .map_err(|e| e.to_string())?;
+        let conn = db.conn();
+        conn.execute_batch(&format!(
+            "VACUUM INTO '{}'",
+            tmp_db.to_string_lossy().replace('\'', "''")
+        )).map_err(|e| e.to_string())?;
     }
 
     let file = std::fs::File::create(&path).map_err(|e| e.to_string())?;
     let mut zip = zip::ZipWriter::new(file);
     let opts = SimpleFileOptions::default().compression_method(zip::CompressionMethod::Deflated);
 
-    let db_bytes = std::fs::read(&tmp_db).map_err(|e| e.to_string())?;
-    zip.start_file("data/notekeep.db", opts).map_err(|e| e.to_string())?;
-    zip.write_all(&db_bytes).map_err(|e| e.to_string())?;
+    // Stream DB file into zip instead of loading entirely into memory
+    {
+        let mut db_file = std::fs::File::open(&tmp_db).map_err(|e| e.to_string())?;
+        zip.start_file("data/notekeep.db", opts).map_err(|e| e.to_string())?;
+        std::io::copy(&mut db_file, &mut zip).map_err(|e| e.to_string())?;
+    }
 
     let images_dir = data_dir.join("images");
     if images_dir.is_dir() {
@@ -731,10 +760,10 @@ pub fn backup_database(db: tauri::State<Db>, path: String) -> Result<(), String>
             let entry = entry.map_err(|e| e.to_string())?;
             if entry.file_type().map_err(|e| e.to_string())?.is_file() {
                 let name = entry.file_name().to_string_lossy().to_string();
-                let bytes = std::fs::read(entry.path()).map_err(|e| e.to_string())?;
+                let mut img_file = std::fs::File::open(entry.path()).map_err(|e| e.to_string())?;
                 zip.start_file(format!("data/images/{}", name), opts)
                     .map_err(|e| e.to_string())?;
-                zip.write_all(&bytes).map_err(|e| e.to_string())?;
+                std::io::copy(&mut img_file, &mut zip).map_err(|e| e.to_string())?;
             }
         }
     }
@@ -789,7 +818,7 @@ pub fn restore_database(
     }
     std::fs::create_dir_all(&parent).map_err(|e| e.to_string())?;
 
-    // 解压会自动创建 parent/data/...；失败则回滚
+    // 解压：失败则回滚
     if let Err(e) = archive.extract(&parent) {
         let _ = std::fs::remove_dir_all(&data_dir);
         if backup_dir.exists() {
@@ -802,4 +831,202 @@ pub fn restore_database(
 
     log::info!("restore complete from {}, restarting app", path);
     app.restart();
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn test_db() -> Db {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch("PRAGMA foreign_keys = ON;").unwrap();
+        let db = Db { conn: Mutex::new(conn) };
+        db.init_tables().unwrap();
+        db
+    }
+
+    #[test]
+    fn test_create_and_get_note() {
+        let db = test_db();
+        let id = db.create_item(None, "Test Note", "note", None).unwrap();
+        let item = db.get_item(&id).unwrap().expect("item should exist");
+        assert_eq!(item.name, "Test Note");
+        assert_eq!(item.item_type, "note");
+        assert!(item.parent_id.is_none());
+    }
+
+    #[test]
+    fn test_create_folder_and_child() {
+        let db = test_db();
+        let folder_id = db.create_item(None, "Folder", "folder", None).unwrap();
+        let note_id = db.create_item(Some(&folder_id), "Child Note", "note", None).unwrap();
+        let note = db.get_item(&note_id).unwrap().unwrap();
+        assert_eq!(note.parent_id.unwrap(), folder_id);
+
+        let children = db.list_items(Some(&folder_id), None, None).unwrap();
+        assert_eq!(children.len(), 1);
+        assert_eq!(children[0].id, note_id);
+    }
+
+    #[test]
+    fn test_update_item_single_field() {
+        let db = test_db();
+        let id = db.create_item(None, "Original", "note", None).unwrap();
+        db.update_item(&id, Some("Renamed"), None, None).unwrap();
+        let item = db.get_item(&id).unwrap().unwrap();
+        assert_eq!(item.name, "Renamed");
+    }
+
+    #[test]
+    fn test_update_item_content() {
+        let db = test_db();
+        let id = db.create_item(None, "Note", "note", None).unwrap();
+        db.update_item(&id, None, Some("# Hello\nworld"), None).unwrap();
+        let item = db.get_item(&id).unwrap().unwrap();
+        assert_eq!(item.content, "# Hello\nworld");
+    }
+
+    #[test]
+    fn test_update_item_date() {
+        let db = test_db();
+        let id = db.create_item(None, "Note", "note", Some("2024-01-01")).unwrap();
+        db.update_item(&id, None, None, Some("2025-12-31")).unwrap();
+        let item = db.get_item(&id).unwrap().unwrap();
+        assert_eq!(item.date.unwrap(), "2025-12-31");
+    }
+
+    #[test]
+    fn test_delete_item() {
+        let db = test_db();
+        let id = db.create_item(None, "To Delete", "note", None).unwrap();
+        db.delete_item(&id).unwrap();
+        assert!(db.get_item(&id).unwrap().is_none());
+    }
+
+    #[test]
+    fn test_delete_folder_cascades_to_children() {
+        let db = test_db();
+        let folder_id = db.create_item(None, "Folder", "folder", None).unwrap();
+        let child_id = db.create_item(Some(&folder_id), "Child", "note", None).unwrap();
+        db.delete_item(&folder_id).unwrap();
+        assert!(db.get_item(&folder_id).unwrap().is_none());
+        assert!(db.get_item(&child_id).unwrap().is_none());
+    }
+
+    #[test]
+    fn test_nested_folder_cascade() {
+        let db = test_db();
+        let root = db.create_item(None, "Root", "folder", None).unwrap();
+        let mid = db.create_item(Some(&root), "Mid", "folder", None).unwrap();
+        let leaf = db.create_item(Some(&mid), "Leaf", "note", None).unwrap();
+        db.delete_item(&root).unwrap();
+        assert!(db.get_item(&root).unwrap().is_none());
+        assert!(db.get_item(&mid).unwrap().is_none());
+        assert!(db.get_item(&leaf).unwrap().is_none());
+    }
+
+    #[test]
+    fn test_move_item() {
+        let db = test_db();
+        let f1 = db.create_item(None, "Folder 1", "folder", None).unwrap();
+        let f2 = db.create_item(None, "Folder 2", "folder", None).unwrap();
+        let note = db.create_item(Some(&f1), "Note", "note", None).unwrap();
+        db.move_item(&note, Some(&f2)).unwrap();
+        let item = db.get_item(&note).unwrap().unwrap();
+        assert_eq!(item.parent_id.unwrap(), f2);
+    }
+
+    #[test]
+    fn test_reorder_items() {
+        let db = test_db();
+        let a = db.create_item(None, "A", "note", None).unwrap();
+        let b = db.create_item(None, "B", "note", None).unwrap();
+        db.reorder_items(&[(a.clone(), 2), (b.clone(), 1)]).unwrap();
+        let items = db.list_items(None, None, None).unwrap();
+        let a_item = items.iter().find(|i| i.id == a).unwrap();
+        let b_item = items.iter().find(|i| i.id == b).unwrap();
+        assert_eq!(a_item.sort_order, 2);
+        assert_eq!(b_item.sort_order, 1);
+    }
+
+    #[test]
+    fn test_list_items_filter_by_date() {
+        let db = test_db();
+        db.create_item(None, "Note 1", "note", Some("2024-01-01")).unwrap();
+        db.create_item(None, "Note 2", "note", Some("2024-06-15")).unwrap();
+        let items = db.list_items(None, None, Some("2024-01-01")).unwrap();
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0].name, "Note 1");
+    }
+
+    #[test]
+    fn test_list_items_filter_by_type() {
+        let db = test_db();
+        db.create_item(None, "Folder", "folder", None).unwrap();
+        db.create_item(None, "Note", "note", None).unwrap();
+        let notes = db.list_items(None, Some("note"), None).unwrap();
+        assert_eq!(notes.len(), 1);
+        assert_eq!(notes[0].name, "Note");
+        let folders = db.list_items(None, Some("folder"), None).unwrap();
+        assert_eq!(folders.len(), 1);
+    }
+
+    #[test]
+    fn test_search_items() {
+        let db = test_db();
+        let id = db.create_item(None, "UniqueSearchTerm", "note", None).unwrap();
+        db.update_item(&id, None, Some("This note contains UniqueSearchTerm"), None).unwrap();
+        let results = db.search_items("UniqueSearchTerm").unwrap();
+        assert_eq!(results.len(), 1);
+        assert!(results[0].snippet.contains("UniqueSearchTerm"));
+    }
+
+    #[test]
+    fn test_search_empty_query() {
+        let db = test_db();
+        db.create_item(None, "Any Note", "note", None).unwrap();
+        let results = db.search_items("").unwrap();
+        assert!(results.is_empty());
+        let results = db.search_items("  ").unwrap();
+        assert!(results.is_empty());
+    }
+
+    #[test]
+    fn test_list_all_items() {
+        let db = test_db();
+        db.create_item(None, "Root Note", "note", None).unwrap();
+        let folder = db.create_item(None, "Folder", "folder", None).unwrap();
+        db.create_item(Some(&folder), "Child", "note", None).unwrap();
+        let all = db.list_all_items().unwrap();
+        assert_eq!(all.len(), 3);
+    }
+
+    #[test]
+    fn test_topological_sort() {
+        let items = vec![
+            Item { id: "b".into(), parent_id: Some("a".into()), name: "B".into(), item_type: "note".into(), date: None, content: "".into(), sort_order: 0, created_at: "".into(), updated_at: "".into() },
+            Item { id: "a".into(), parent_id: None, name: "A".into(), item_type: "folder".into(), date: None, content: "".into(), sort_order: 0, created_at: "".into(), updated_at: "".into() },
+            Item { id: "c".into(), parent_id: Some("b".into()), name: "C".into(), item_type: "note".into(), date: None, content: "".into(), sort_order: 0, created_at: "".into(), updated_at: "".into() },
+        ];
+        let sorted = topological_sort(items);
+        let positions: Vec<&str> = sorted.iter().map(|i| i.id.as_str()).collect();
+        let a_pos = positions.iter().position(|&x| x == "a").unwrap();
+        let b_pos = positions.iter().position(|&x| x == "b").unwrap();
+        let c_pos = positions.iter().position(|&x| x == "c").unwrap();
+        assert!(a_pos < b_pos, "parent a before child b");
+        assert!(b_pos < c_pos, "parent b before child c");
+    }
+
+    #[test]
+    fn test_create_item_updates_updated_at() {
+        let db = test_db();
+        let id = db.create_item(None, "Note", "note", None).unwrap();
+        let item = db.get_item(&id).unwrap().unwrap();
+        assert!(!item.created_at.is_empty());
+        assert_eq!(item.created_at, item.updated_at);
+        std::thread::sleep(std::time::Duration::from_millis(1100));
+        db.update_item(&id, Some("Renamed"), None, None).unwrap();
+        let item = db.get_item(&id).unwrap().unwrap();
+        assert_ne!(item.updated_at, item.created_at);
+    }
 }

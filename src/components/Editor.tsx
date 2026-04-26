@@ -2,6 +2,7 @@ import { useEffect, useRef, forwardRef, useImperativeHandle, useCallback } from 
 import { marked } from 'marked';
 import { invoke } from '@tauri-apps/api/core';
 import { useState } from 'react';
+import DOMPurify from 'dompurify';
 
 export type ViewMode = 'edit' | 'split' | 'preview';
 
@@ -24,15 +25,20 @@ marked.setOptions({ gfm: true, breaks: true });
 async function resolveImages(html: string): Promise<string> {
   const matches = [...html.matchAll(/src="(\/[^"]+)"/g)];
   if (!matches.length) return html;
-  let resolved = html;
-  await Promise.all(
+  const replacements = await Promise.all(
     matches.map(async ([full, path]) => {
       try {
         const dataUrl = await invoke<string>('get_image_base64', { path });
-        resolved = resolved.replace(full, `src="${dataUrl}"`);
-      } catch { /* leave as-is */ }
+        return { from: full, to: `src="${dataUrl}"` };
+      } catch {
+        return null;
+      }
     })
   );
+  let resolved = html;
+  for (const r of replacements) {
+    if (r) resolved = resolved.replace(r.from, r.to);
+  }
   return resolved;
 }
 
@@ -44,26 +50,28 @@ export const Editor = forwardRef<EditorHandle, EditorProps>(
     const isDragging = useRef(false);
     const containerRef = useRef<HTMLDivElement>(null);
     const textareaRef = useRef<HTMLTextAreaElement>(null);
-    const lastContentRef = useRef(content);
+    const markdownRef = useRef(content);
 
+    // Sync markdown state when content prop changes
     useEffect(() => {
-      if (content !== lastContentRef.current) {
+      if (content !== markdownRef.current) {
         setMarkdown(content);
-        lastContentRef.current = content;
+        markdownRef.current = content;
       }
     }, [content]);
 
+    // Debounced preview: render after 120ms of no typing
     useEffect(() => {
       let cancelled = false;
-      const run = async () => {
+      const timer = setTimeout(async () => {
         try {
           const raw = String(marked.parse(markdown));
           const html = await resolveImages(raw);
-          if (!cancelled) setPreviewHtml(html);
-        } catch { /* ignore */ }
-      };
-      run();
-      return () => { cancelled = true; };
+          const sanitized = DOMPurify.sanitize(html);
+          if (!cancelled) setPreviewHtml(sanitized);
+        } catch { /* ignore parse errors */ }
+      }, 120);
+      return () => { cancelled = true; clearTimeout(timer); };
     }, [markdown]);
 
     useImperativeHandle(ref, () => ({
@@ -71,13 +79,14 @@ export const Editor = forwardRef<EditorHandle, EditorProps>(
         const ta = textareaRef.current;
         if (!ta) return;
         const start = ta.selectionStart;
-        const newVal = markdown.slice(0, start) + text + markdown.slice(ta.selectionEnd);
+        const currentMd = markdownRef.current;
+        const newVal = currentMd.slice(0, start) + text + currentMd.slice(ta.selectionEnd);
         setMarkdown(newVal);
-        lastContentRef.current = newVal;
+        markdownRef.current = newVal;
         onUpdate(newVal);
         setTimeout(() => { ta.selectionStart = ta.selectionEnd = start + text.length; }, 0);
       },
-      getContent: () => markdown,
+      getContent: () => markdownRef.current,
     }));
 
     useEffect(() => {
@@ -91,7 +100,7 @@ export const Editor = forwardRef<EditorHandle, EditorProps>(
     const handleChange = useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
       const val = e.target.value;
       setMarkdown(val);
-      lastContentRef.current = val;
+      markdownRef.current = val;
       onUpdate(val);
     }, [onUpdate]);
 
@@ -116,13 +125,14 @@ export const Editor = forwardRef<EditorHandle, EditorProps>(
         if (!ta) return;
         const ins = `![image](${imgRef})`;
         const start = ta.selectionStart;
-        const newVal = markdown.slice(0, start) + ins + markdown.slice(start);
+        const currentMd = markdownRef.current;
+        const newVal = currentMd.slice(0, start) + ins + currentMd.slice(start);
         setMarkdown(newVal);
-        lastContentRef.current = newVal;
+        markdownRef.current = newVal;
         onUpdate(newVal);
       };
       reader.readAsDataURL(file);
-    }, [markdown, noteId, onUpdate]);
+    }, [noteId, onUpdate]);
 
     const onDividerMouseDown = useCallback((e: React.MouseEvent) => {
       e.preventDefault();

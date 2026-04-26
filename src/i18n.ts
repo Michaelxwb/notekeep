@@ -46,6 +46,8 @@ export const translations = {
     noNoteSelected: '选择笔记或新建',
     createNote: '创建笔记',
     data: '数据',
+    tocTitle: '目录',
+    tocOnThisPage: '本页内容',
   },
   en: {
     notes: 'Notes',

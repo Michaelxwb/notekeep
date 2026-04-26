@@ -8,14 +8,27 @@ import { TableOfContents } from './components/TableOfContents';
 import { Settings } from './components/Settings';
 import { useLanguage } from './contexts/LanguageContext';
 import { format } from 'date-fns';
-import { FileText, Search, Pencil, Columns2, Eye, Settings2 } from 'lucide-react';
+import { FileText, Search, Pencil, Columns2, Eye, Settings2, Loader2 } from 'lucide-react';
+
+const pad = (n: number) => String(n).padStart(2, '0');
+const nowStr = () => {
+  const d = new Date();
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+};
 
 function App() {
   const { t, isFirstRun, completeFirstRun } = useLanguage();
+  const [error, setError] = useState<string | null>(null);
+
   const {
     listAllItems, createItem, deleteItem, updateItem, searchItems,
-    reorderItems, getItem,
+    reorderItems, getItem, loading, error: hookError,
   } = useNotes();
+
+  // Sync hook errors to display toast
+  useEffect(() => {
+    if (hookError) setError(hookError);
+  }, [hookError]);
 
   const [items, setItems] = useState<NoteItem[]>([]);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -46,6 +59,13 @@ function App() {
   }, [listAllItems]);
 
   useEffect(() => { loadItems(); }, [loadItems]);
+
+  // Auto-dismiss error toast
+  useEffect(() => {
+    if (!error) return;
+    const t = setTimeout(() => setError(null), 4000);
+    return () => clearTimeout(t);
+  }, [error]);
 
   useEffect(() => {
     if (searchQuery.length < 2) { setSearchResults([]); return; }
@@ -79,10 +99,22 @@ function App() {
   const handleCreateNote = async (parentId?: string) => {
     try {
       const newId = await createItem(parentId ?? null, 'New Note', 'note', undefined);
-      await loadItems();
+      const now = nowStr();
+      // Compute sort_order: after last sibling
+      const siblings = items.filter(i => i.parent_id === (parentId ?? null));
+      const maxOrder = siblings.reduce((max, i) => Math.max(max, i.sort_order), -1);
+      const newItem: NoteItem = {
+        id: newId, parent_id: parentId ?? null, name: 'New Note',
+        item_type: 'note', date: null, content: '',
+        sort_order: maxOrder + 1, created_at: now, updated_at: now,
+      };
+      setItems(prev => [...prev, newItem]);
       setSelectedNoteId(newId); selectedNoteIdRef.current = newId;
       setCurrentContent(''); currentContentRef.current = ''; setHeadings([]);
-    } catch (e) { console.error('Failed to create note:', e); }
+    } catch (e) {
+      console.error('Failed to create note:', e);
+      await loadItems();
+    }
   };
 
   const handleCreateDiary = async () => {
@@ -91,36 +123,91 @@ function App() {
       const existing = items.find((i) => i.item_type === 'note' && i.date === dateStr);
       if (existing) { handleSelectNote(existing.id); return; }
       const newId = await createItem(null, `Diary ${dateStr}`, 'note', dateStr);
-      await loadItems();
+      const now = nowStr();
+      const newItem: NoteItem = {
+        id: newId, parent_id: null, name: `Diary ${dateStr}`,
+        item_type: 'note', date: dateStr, content: '',
+        sort_order: 0, created_at: now, updated_at: now,
+      };
+      setItems(prev => {
+        const updated = [...prev, newItem];
+        if (dateStr) setDiariesWithNotes(prev => { const s = new Set(prev); s.add(dateStr); return s; });
+        return updated;
+      });
       setSelectedNoteId(newId); selectedNoteIdRef.current = newId;
       setCurrentContent(''); currentContentRef.current = ''; setHeadings([]);
-    } catch (e) { console.error('Failed to create diary:', e); }
+    } catch (e) {
+      console.error('Failed to create diary:', e);
+      await loadItems();
+    }
   };
 
   const handleCreateFolder = async (parentId?: string) => {
-    try { await createItem(parentId ?? null, 'New Folder', 'folder'); await loadItems(); }
-    catch (e) { console.error('Failed to create folder:', e); }
+    try {
+      const newId = await createItem(parentId ?? null, 'New Folder', 'folder');
+      const now = nowStr();
+      const siblings = items.filter(i => i.parent_id === (parentId ?? null));
+      const maxOrder = siblings.reduce((max, i) => Math.max(max, i.sort_order), -1);
+      const newItem: NoteItem = {
+        id: newId, parent_id: parentId ?? null, name: 'New Folder',
+        item_type: 'folder', date: null, content: '',
+        sort_order: maxOrder + 1, created_at: now, updated_at: now,
+      };
+      setItems(prev => [...prev, newItem]);
+    } catch (e) {
+      console.error('Failed to create folder:', e);
+      await loadItems();
+    }
   };
 
   const handleDeleteItem = async (id: string) => {
+    // Compute descendants optimistically for state cleanup
+    const descendantIds = new Set<string>();
+    const queue = [id];
+    while (queue.length > 0) {
+      const current = queue.shift()!;
+      descendantIds.add(current);
+      for (const item of items) {
+        if (item.parent_id === current) queue.push(item.id);
+      }
+    }
+
+    setItems(prev => prev.filter(i => !descendantIds.has(i.id)));
+    if (descendantIds.has(selectedNoteId || '')) {
+      setSelectedNoteId(null); selectedNoteIdRef.current = null;
+      setCurrentContent(''); currentContentRef.current = ''; setHeadings([]);
+    }
+
     try {
       await deleteItem(id);
-      if (selectedNoteId === id) {
-        setSelectedNoteId(null); selectedNoteIdRef.current = null;
-        setCurrentContent(''); currentContentRef.current = ''; setHeadings([]);
-      }
+    } catch (e) {
+      console.error('Failed to delete item:', e);
       await loadItems();
-    } catch (e) { console.error('Failed to delete item:', e); }
+    }
   };
 
   const handleRenameItem = async (id: string, newName: string) => {
-    try { await updateItem(id, newName, undefined, undefined); await loadItems(); }
-    catch (e) { console.error('Failed to rename item:', e); }
+    setItems(prev => prev.map(i => i.id === id ? { ...i, name: newName } : i));
+    try {
+      await updateItem(id, newName, undefined, undefined);
+    } catch (e) {
+      console.error('Failed to rename item:', e);
+      await loadItems();
+    }
   };
 
   const handleReorderItems = async (updates: [string, number][]) => {
-    try { await reorderItems(updates); await loadItems(); }
-    catch (e) { console.error('Failed to reorder items:', e); }
+    const updateMap = new Map(updates);
+    setItems(prev => prev.map(i => {
+      const newOrder = updateMap.get(i.id);
+      return newOrder !== undefined ? { ...i, sort_order: newOrder } : i;
+    }));
+    try {
+      await reorderItems(updates);
+    } catch (e) {
+      console.error('Failed to reorder items:', e);
+      await loadItems();
+    }
   };
 
   const handleContentUpdate = useCallback((content: string) => {
@@ -285,6 +372,21 @@ function App() {
 
         <TableOfContents headings={headings} />
       </main>
+
+      {/* Loading overlay */}
+      {loading && (
+        <div className="fixed top-3 right-16 z-50 flex items-center gap-2 bg-[#1e1e32]/90 rounded-full px-3 py-1.5 border border-gray-700/60 shadow-lg">
+          <Loader2 size={14} className="text-[#a78bfa] animate-spin" />
+          <span className="text-xs text-gray-400">Saving…</span>
+        </div>
+      )}
+
+      {/* Error toast */}
+      {error && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-red-900/90 text-red-200 text-sm px-4 py-2 rounded-lg border border-red-700/60 shadow-xl max-w-md truncate">
+          {error}
+        </div>
+      )}
 
       {settingsOpen && (
         <Settings onClose={() => setSettingsOpen(false)} onImportSuccess={handleImportSuccess} />
