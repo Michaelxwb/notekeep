@@ -91,12 +91,12 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            artifacts/bundles-macos-latest/dmg/*
-            artifacts/bundles-ubuntu-22.04/deb/*
-            artifacts/bundles-ubuntu-22.04/appimage/*
-            artifacts/bundles-ubuntu-22.04/rpm/*
-            artifacts/bundles-windows-latest/nsis/*
-            artifacts/bundles-windows-latest/msi/*
+            artifacts/bundles-macos-latest/dmg/*.dmg
+            artifacts/bundles-ubuntu-22.04/deb/*.deb
+            artifacts/bundles-ubuntu-22.04/appimage/*.AppImage
+            artifacts/bundles-ubuntu-22.04/rpm/*.rpm
+            artifacts/bundles-windows-latest/nsis/*.exe
+            artifacts/bundles-windows-latest/msi/*.msi
           draft: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

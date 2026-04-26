@@ -57,23 +57,9 @@
   display: none;
 }
 
-/* Nav buttons */
-nav.rdp-nav button.rdp-button_previous,
-nav.rdp-nav button.rdp-button_next {
-  color: #ffffff !important;
-  fill: #ffffff !important;
-  border-radius: 4px !important;
-  padding: 4px 8px !important;
-}
-
-nav.rdp-nav button.rdp-button_previous:hover,
-nav.rdp-nav button.rdp-button_next:hover {
-  background-color: rgba(255, 255, 255, 0.15) !important;
-}
-
-nav.rdp-nav .rdp-chevron {
-  fill: #ffffff !important;
-  stroke: #ffffff !important;
+/* Hide default nav — custom MonthCaption renders its own chevrons */
+nav.rdp-nav {
+  display: none !important;
 }
 
 /* Caption / Month label */

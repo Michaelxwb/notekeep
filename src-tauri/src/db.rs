@@ -537,41 +537,269 @@ fn topological_sort(items: Vec<Item>) -> Vec<Item> {
     sorted
 }
 
-#[tauri::command]
-pub fn export_data(db: tauri::State<Db>) -> Result<String, String> {
-    let items = db.list_all_items().map_err(|e| e.to_string())?;
-    serde_json::to_string_pretty(&items).map_err(|e| e.to_string())
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct ExportImage {
+    pub id: String,
+    pub note_id: String,
+    pub filename: String,
+    pub path: String,
+    pub created_at: String,
+    pub data_base64: String,
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct ExportPayload {
+    pub version: u32,
+    pub exported_at: String,
+    pub items: Vec<Item>,
+    pub images: Vec<ExportImage>,
+}
+
+fn list_all_images_with_data(db: &Db) -> Result<Vec<ExportImage>, String> {
+    let conn = db.conn.lock().map_err(|e| e.to_string())?;
+    let mut stmt = conn
+        .prepare("SELECT id, note_id, filename, path, created_at FROM images")
+        .map_err(|e| e.to_string())?;
+    let rows = stmt
+        .query_map([], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
+                row.get::<_, String>(3)?,
+                row.get::<_, String>(4)?,
+            ))
+        })
+        .map_err(|e| e.to_string())?;
+
+    let data_dir = get_data_dir();
+    let mut images = Vec::new();
+    for row in rows {
+        let (id, note_id, filename, path, created_at) = row.map_err(|e| e.to_string())?;
+        let abs_path = data_dir.join(&path);
+        let bytes = std::fs::read(&abs_path).unwrap_or_default();
+        if bytes.is_empty() {
+            log::error!("image file missing or empty: {}", abs_path.display());
+        }
+        let data_base64 = base64::engine::general_purpose::STANDARD.encode(&bytes);
+        images.push(ExportImage { id, note_id, filename, path, created_at, data_base64 });
+    }
+    Ok(images)
 }
 
 #[tauri::command]
-pub fn import_data(db: tauri::State<Db>, data: String) -> Result<(), String> {
-    let items: Vec<Item> = serde_json::from_str(&data).map_err(|e| e.to_string())?;
-    let sorted = topological_sort(items);
+pub fn export_data(db: tauri::State<Db>) -> Result<String, String> {
+    let items = db.list_all_items().map_err(|e| e.to_string())?;
+    let images = list_all_images_with_data(&db)?;
+    let payload = ExportPayload {
+        version: 1,
+        exported_at: Local::now().format("%Y-%m-%d %H:%M:%S").to_string(),
+        items,
+        images,
+    };
+    serde_json::to_string_pretty(&payload).map_err(|e| e.to_string())
+}
 
-    let conn = db.conn.lock().unwrap();
+#[tauri::command]
+pub fn export_data_to_file(db: tauri::State<Db>, path: String) -> Result<(), String> {
+    let items = db.list_all_items().map_err(|e| e.to_string())?;
+    let images = list_all_images_with_data(&db)?;
+    let payload = ExportPayload {
+        version: 1,
+        exported_at: Local::now().format("%Y-%m-%d %H:%M:%S").to_string(),
+        items,
+        images,
+    };
+    let json = serde_json::to_string_pretty(&payload).map_err(|e| e.to_string())?;
+    std::fs::write(&path, json).map_err(|e| e.to_string())?;
+    log::info!("exported {} items + {} images to {}", payload.items.len(), payload.images.len(), path);
+    Ok(())
+}
 
-    // Disable FK to allow bulk delete without cascade ordering issues
-    conn.execute_batch("PRAGMA foreign_keys = OFF;").map_err(|e| e.to_string())?;
-    conn.execute("DELETE FROM images", []).map_err(|e| e.to_string())?;
-    conn.execute("DELETE FROM items", []).map_err(|e| e.to_string())?;
-    conn.execute_batch("PRAGMA foreign_keys = ON;").map_err(|e| e.to_string())?;
+fn parse_payload(data: &str) -> Result<ExportPayload, String> {
+    if let Ok(p) = serde_json::from_str::<ExportPayload>(data) {
+        return Ok(p);
+    }
+    // 兼容旧格式：纯 items 数组
+    let items: Vec<Item> = serde_json::from_str(data)
+        .map_err(|e| format!("invalid import data: {e}"))?;
+    Ok(ExportPayload {
+        version: 0,
+        exported_at: String::new(),
+        items,
+        images: vec![],
+    })
+}
 
-    let now = Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
+fn import_payload(db: &Db, payload: ExportPayload) -> Result<(usize, usize), String> {
+    let sorted = topological_sort(payload.items);
+    let conn = db.conn.lock().map_err(|e| e.to_string())?;
+
+    // upsert items: 仅当外来 updated_at 更新于本地时覆盖，避免旧数据回滚新数据
     for item in &sorted {
         conn.execute(
             "INSERT INTO items (id, parent_id, name, type, date, content, sort_order, created_at, updated_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
+             ON CONFLICT(id) DO UPDATE SET
+                parent_id = excluded.parent_id,
+                name = excluded.name,
+                type = excluded.type,
+                date = excluded.date,
+                content = excluded.content,
+                sort_order = excluded.sort_order,
+                updated_at = excluded.updated_at
+             WHERE excluded.updated_at > items.updated_at",
             params![
                 item.id, item.parent_id, item.name, item.item_type,
                 item.date, item.content, item.sort_order,
-                item.created_at, now
+                item.created_at, item.updated_at
             ],
         ).map_err(|e| e.to_string())?;
     }
 
-    // Rebuild FTS from current content
-    conn.execute_batch("INSERT INTO items_fts(items_fts) VALUES ('rebuild');")
-        .map_err(|e| e.to_string())?;
+    // 落盘图片 + upsert images 表（id 已存在则跳过）
+    let data_dir = get_data_dir();
+    std::fs::create_dir_all(data_dir.join("images")).map_err(|e| e.to_string())?;
+    for img in &payload.images {
+        let abs_path = data_dir.join(&img.path);
+        if !abs_path.exists() && !img.data_base64.is_empty() {
+            let raw_b64 = img.data_base64.split(',').last().unwrap_or(&img.data_base64);
+            let bytes = base64::engine::general_purpose::STANDARD
+                .decode(raw_b64)
+                .map_err(|e| format!("base64 decode failed for image {}: {}", img.id, e))?;
+            if let Some(parent) = abs_path.parent() {
+                std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+            }
+            std::fs::write(&abs_path, bytes).map_err(|e| e.to_string())?;
+        }
 
+        conn.execute(
+            "INSERT INTO images (id, note_id, filename, path, created_at)
+             VALUES (?1, ?2, ?3, ?4, ?5)
+             ON CONFLICT(id) DO NOTHING",
+            params![img.id, img.note_id, img.filename, img.path, img.created_at],
+        ).map_err(|e| e.to_string())?;
+    }
+
+    Ok((sorted.len(), payload.images.len()))
+}
+
+#[tauri::command]
+pub fn import_data(db: tauri::State<Db>, data: String) -> Result<(), String> {
+    let payload = parse_payload(&data)?;
+    let (n_items, n_images) = import_payload(&db, payload)?;
+    log::info!("merge-import: {} items, {} images", n_items, n_images);
     Ok(())
+}
+
+#[tauri::command]
+pub fn import_data_from_file(db: tauri::State<Db>, path: String) -> Result<(), String> {
+    let data = std::fs::read_to_string(&path).map_err(|e| e.to_string())?;
+    let payload = parse_payload(&data)?;
+    let (n_items, n_images) = import_payload(&db, payload)?;
+    log::info!("merge-import from {}: {} items, {} images", path, n_items, n_images);
+    Ok(())
+}
+
+#[tauri::command]
+pub fn backup_database(db: tauri::State<Db>, path: String) -> Result<(), String> {
+    use std::io::Write;
+    use zip::write::SimpleFileOptions;
+
+    let data_dir = get_data_dir();
+
+    // VACUUM INTO 写一份干净副本到临时位置，避开 WAL/SHM 与并发写
+    let tmp_db = std::env::temp_dir().join(format!("notekeep-backup-{}.db", Uuid::new_v4()));
+    {
+        let conn = db.conn.lock().map_err(|e| e.to_string())?;
+        let tmp_str = tmp_db.to_string_lossy().replace('\'', "''");
+        conn.execute_batch(&format!("VACUUM INTO '{}'", tmp_str))
+            .map_err(|e| e.to_string())?;
+    }
+
+    let file = std::fs::File::create(&path).map_err(|e| e.to_string())?;
+    let mut zip = zip::ZipWriter::new(file);
+    let opts = SimpleFileOptions::default().compression_method(zip::CompressionMethod::Deflated);
+
+    let db_bytes = std::fs::read(&tmp_db).map_err(|e| e.to_string())?;
+    zip.start_file("data/notekeep.db", opts).map_err(|e| e.to_string())?;
+    zip.write_all(&db_bytes).map_err(|e| e.to_string())?;
+
+    let images_dir = data_dir.join("images");
+    if images_dir.is_dir() {
+        for entry in std::fs::read_dir(&images_dir).map_err(|e| e.to_string())? {
+            let entry = entry.map_err(|e| e.to_string())?;
+            if entry.file_type().map_err(|e| e.to_string())?.is_file() {
+                let name = entry.file_name().to_string_lossy().to_string();
+                let bytes = std::fs::read(entry.path()).map_err(|e| e.to_string())?;
+                zip.start_file(format!("data/images/{}", name), opts)
+                    .map_err(|e| e.to_string())?;
+                zip.write_all(&bytes).map_err(|e| e.to_string())?;
+            }
+        }
+    }
+
+    zip.finish().map_err(|e| e.to_string())?;
+    let _ = std::fs::remove_file(&tmp_db);
+
+    log::info!("backup written to {}", path);
+    Ok(())
+}
+
+#[tauri::command]
+pub fn restore_database(
+    app: tauri::AppHandle,
+    db: tauri::State<Db>,
+    path: String,
+) -> Result<(), String> {
+    let data_dir = get_data_dir();
+    let parent = data_dir.parent().ok_or_else(|| "invalid data dir".to_string())?.to_path_buf();
+
+    // 校验 zip：必须含 data/notekeep.db，且所有条目都在 data/ 下
+    let file = std::fs::File::open(&path).map_err(|e| e.to_string())?;
+    let mut archive = zip::ZipArchive::new(file).map_err(|e| e.to_string())?;
+    let mut has_db = false;
+    for i in 0..archive.len() {
+        let entry = archive.by_index(i).map_err(|e| e.to_string())?;
+        let name = entry.name();
+        if !name.starts_with("data/") || name.contains("..") {
+            return Err(format!("invalid entry in backup: {}", name));
+        }
+        if name == "data/notekeep.db" {
+            has_db = true;
+        }
+    }
+    if !has_db {
+        return Err("invalid backup: missing data/notekeep.db".to_string());
+    }
+
+    // 关闭当前 SQLite 连接，释放文件锁
+    {
+        let mut guard = db.conn.lock().map_err(|e| e.to_string())?;
+        let dummy = Connection::open_in_memory().map_err(|e| e.to_string())?;
+        let old = std::mem::replace(&mut *guard, dummy);
+        drop(old);
+    }
+
+    // 备份现有 data/ 到 data.bak/，失败可回滚
+    let backup_dir = parent.join("data.bak");
+    if data_dir.exists() {
+        let _ = std::fs::remove_dir_all(&backup_dir);
+        std::fs::rename(&data_dir, &backup_dir).map_err(|e| e.to_string())?;
+    }
+    std::fs::create_dir_all(&parent).map_err(|e| e.to_string())?;
+
+    // 解压会自动创建 parent/data/...；失败则回滚
+    if let Err(e) = archive.extract(&parent) {
+        let _ = std::fs::remove_dir_all(&data_dir);
+        if backup_dir.exists() {
+            let _ = std::fs::rename(&backup_dir, &data_dir);
+        }
+        return Err(format!("restore failed: {e}"));
+    }
+
+    let _ = std::fs::remove_dir_all(&backup_dir);
+
+    log::info!("restore complete from {}, restarting app", path);
+    app.restart();
 }

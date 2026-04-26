@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { List, X } from 'lucide-react';
+import { useLanguage } from '../contexts/LanguageContext';
 
 interface Heading {
   level: number;
@@ -12,6 +13,7 @@ interface TableOfContentsProps {
 }
 
 export function TableOfContents({ headings }: TableOfContentsProps) {
+  const { t } = useLanguage();
   const [open, setOpen] = useState(false);
 
   if (!headings.length) return null;
@@ -37,10 +39,10 @@ export function TableOfContents({ headings }: TableOfContentsProps) {
             ? 'bg-[#7c3aed] text-white border-[#7c3aed]'
             : 'bg-gray-800 text-gray-400 border-gray-700 hover:text-white hover:border-gray-500'
         }`}
-        title="Table of Contents"
+        title={t('tocOnThisPage')}
       >
         <List size={13} />
-        TOC
+        {t('tocTitle')}
       </button>
 
       {/* Panel */}
@@ -50,7 +52,7 @@ export function TableOfContents({ headings }: TableOfContentsProps) {
           style={{ maxHeight: '60vh' }}
         >
           <div className="flex items-center justify-between px-4 pt-3 pb-2 flex-shrink-0">
-            <span className="text-[10px] text-gray-400 uppercase tracking-widest font-medium">On This Page</span>
+            <span className="text-[10px] text-gray-400 uppercase tracking-widest font-medium">{t('tocOnThisPage')}</span>
             <button
               onClick={() => setOpen(false)}
               className="text-gray-500 hover:text-gray-200 transition-colors"
