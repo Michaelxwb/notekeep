@@ -40,7 +40,7 @@ def main() -> None:
         if not isinstance(file_path, str) or not file_path:
             return
 
-        project_root = os.getcwd()
+        project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
         abs_path = file_path
         if not os.path.isabs(abs_path):
             abs_path = os.path.join(project_root, file_path)

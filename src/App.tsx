@@ -8,7 +8,10 @@ import { TableOfContents } from './components/TableOfContents';
 import { Settings } from './components/Settings';
 import { useLanguage } from './contexts/LanguageContext';
 import { format } from 'date-fns';
-import { FileText, Search, Pencil, Columns2, Eye, Settings2, Loader2 } from 'lucide-react';
+import {
+  FileText, Search, Pencil, Columns2, Eye, Settings2, Loader2,
+  Bold, Italic, Strikethrough, Heading2, Link2, Quote, Code, List, ListOrdered,
+} from 'lucide-react';
 
 const pad = (n: number) => String(n).padStart(2, '0');
 const nowStr = () => {
@@ -21,7 +24,7 @@ function App() {
   const [error, setError] = useState<string | null>(null);
 
   const {
-    listAllItems, createItem, deleteItem, updateItem, searchItems,
+    listAllItemsMeta, createItem, deleteItem, updateItem, searchItems,
     reorderItems, getItem, loading, error: hookError,
   } = useNotes();
 
@@ -47,7 +50,7 @@ function App() {
 
   const loadItems = useCallback(async () => {
     try {
-      const result = await listAllItems();
+      const result = await listAllItemsMeta();
       setItems(result);
       const dates = new Set(
         result.filter((i) => i.item_type === 'note' && i.date).map((i) => i.date as string)
@@ -56,7 +59,7 @@ function App() {
     } catch (e) {
       console.error('Failed to load items:', e);
     }
-  }, [listAllItems]);
+  }, [listAllItemsMeta]);
 
   useEffect(() => { loadItems(); }, [loadItems]);
 
@@ -88,13 +91,18 @@ function App() {
     selectedNoteIdRef.current = noteId;
     try {
       const note = await getItem(noteId);
-      if (note) { setCurrentContent(note.content); currentContentRef.current = note.content; setHeadings(getHeadings(note.content)); }
+      const body = note?.content ?? '';
+      setCurrentContent(body);
+      currentContentRef.current = body;
+      setHeadings(getHeadings(body));
     } catch (e) {
       console.error('Failed to fetch note:', e);
-      const fallback = items.find((n) => n.id === noteId);
-      if (fallback) { setCurrentContent(fallback.content); currentContentRef.current = fallback.content; setHeadings(getHeadings(fallback.content)); }
+      // Meta listing has no body; clear and let the user retry.
+      setCurrentContent('');
+      currentContentRef.current = '';
+      setHeadings([]);
     }
-  }, [items, getItem, updateItem]);
+  }, [getItem, updateItem]);
 
   const handleCreateNote = async (parentId?: string) => {
     try {
@@ -161,15 +169,22 @@ function App() {
   };
 
   const handleDeleteItem = async (id: string) => {
-    // Compute descendants optimistically for state cleanup
+    // Build a parent→children index once so collecting descendants is O(n) total
+    // rather than O(n²) on a deep tree.
+    const childrenByParent = new Map<string, string[]>();
+    items.forEach(i => {
+      if (!i.parent_id) return;
+      const arr = childrenByParent.get(i.parent_id);
+      if (arr) arr.push(i.id);
+      else childrenByParent.set(i.parent_id, [i.id]);
+    });
     const descendantIds = new Set<string>();
     const queue = [id];
     while (queue.length > 0) {
       const current = queue.shift()!;
       descendantIds.add(current);
-      for (const item of items) {
-        if (item.parent_id === current) queue.push(item.id);
-      }
+      const kids = childrenByParent.get(current);
+      if (kids) queue.push(...kids);
     }
 
     setItems(prev => prev.filter(i => !descendantIds.has(i.id)));
@@ -198,10 +213,13 @@ function App() {
 
   const handleReorderItems = async (updates: [string, number][]) => {
     const updateMap = new Map(updates);
-    setItems(prev => prev.map(i => {
-      const newOrder = updateMap.get(i.id);
-      return newOrder !== undefined ? { ...i, sort_order: newOrder } : i;
-    }));
+    setItems(prev => {
+      const updated = prev.map(i => {
+        const newOrder = updateMap.get(i.id);
+        return newOrder !== undefined ? { ...i, sort_order: newOrder } : i;
+      });
+      return updated.sort((a, b) => a.sort_order - b.sort_order);
+    });
     try {
       await reorderItems(updates);
     } catch (e) {
@@ -210,10 +228,11 @@ function App() {
     }
   };
 
+  // Keystrokes only mutate refs + schedule a save. Avoid setState here so the
+  // App tree does not re-render on every character; headings refresh via
+  // `onHeadingsChange` from the Editor's debounced render path.
   const handleContentUpdate = useCallback((content: string) => {
-    setCurrentContent(content);
     currentContentRef.current = content;
-    setHeadings(getHeadings(content));
     if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
     saveTimeoutRef.current = setTimeout(() => {
       const id = selectedNoteIdRef.current;
@@ -235,6 +254,8 @@ function App() {
         ? 'text-[#a78bfa]'
         : 'text-gray-600 hover:text-gray-300'
     }`;
+
+  const tbBtnCls = 'p-1.5 rounded transition-colors text-gray-500 hover:text-gray-200 hover:bg-white/[0.04]';
 
   const handleImportSuccess = useCallback(async () => {
     setSelectedNoteId(null);
@@ -287,13 +308,52 @@ function App() {
       />
 
       <main className="flex-1 flex flex-col overflow-hidden">
-        <header className="h-12 border-b border-gray-700/50 px-4 flex items-center gap-3 flex-shrink-0">
-          {/* Left: current note title */}
-          <div className="flex-1 min-w-0">
+        <header className="h-12 border-b border-gray-700/50 bg-gradient-to-b from-[#1d1b3a]/40 to-transparent px-4 flex items-center gap-3 flex-shrink-0">
+          {/* Left: current note title + markdown toolbar */}
+          <div className="flex-1 min-w-0 flex items-center gap-2">
             {selectedNote ? (
-              <span className="text-sm font-medium text-gray-300 truncate">{selectedNote.name}</span>
+              <span className="flex items-center gap-2 text-sm font-medium text-gray-200 truncate max-w-[220px] flex-shrink-0">
+                <span className="w-1.5 h-1.5 rounded-full bg-[#a78bfa] flex-shrink-0" />
+                <span className="truncate">{selectedNote.name}</span>
+              </span>
             ) : (
               <span className="text-sm text-gray-700 select-none">{t('appName')}</span>
+            )}
+            {selectedNote && viewMode !== 'preview' && (
+              <>
+                <span className="w-px h-5 bg-gray-700/70 mx-1 flex-shrink-0" />
+                <div className="flex items-center gap-0.5 min-w-0">
+                <button type="button" title="Heading" className={tbBtnCls}
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => editorRef.current?.prefixLine('## ')}><Heading2 size={14} /></button>
+                <button type="button" title="Bold" className={tbBtnCls}
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => editorRef.current?.wrapSelection('**', '**', 'bold')}><Bold size={14} /></button>
+                <button type="button" title="Italic" className={tbBtnCls}
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => editorRef.current?.wrapSelection('*', '*', 'italic')}><Italic size={14} /></button>
+                <button type="button" title="Strikethrough" className={tbBtnCls}
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => editorRef.current?.wrapSelection('~~', '~~', 'text')}><Strikethrough size={14} /></button>
+                <span className="w-px h-4 bg-gray-700 mx-1" />
+                <button type="button" title="Link" className={tbBtnCls}
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => editorRef.current?.wrapSelection('[', '](url)', 'text')}><Link2 size={14} /></button>
+                <button type="button" title="Quote" className={tbBtnCls}
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => editorRef.current?.prefixLine('> ')}><Quote size={14} /></button>
+                <button type="button" title="Code" className={tbBtnCls}
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => editorRef.current?.wrapSelection('`', '`', 'code')}><Code size={14} /></button>
+                <span className="w-px h-4 bg-gray-700 mx-1" />
+                <button type="button" title="Bulleted list" className={tbBtnCls}
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => editorRef.current?.prefixLine('- ')}><List size={14} /></button>
+                <button type="button" title="Numbered list" className={tbBtnCls}
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => editorRef.current?.prefixLine('1. ')}><ListOrdered size={14} /></button>
+                </div>
+              </>
             )}
           </div>
 
@@ -356,6 +416,7 @@ function App() {
             noteName={selectedNote.name}
             viewMode={viewMode}
             onUpdate={handleContentUpdate}
+            onHeadingsChange={setHeadings}
             onSave={handleManualSave}
           />
         ) : (

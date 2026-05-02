@@ -2,7 +2,7 @@ mod db;
 
 use db::{
     Db, create_item, get_item, update_item, delete_item, move_item,
-    reorder_items, list_items, list_all_items, search_items, save_image, get_image, get_image_base64,
+    reorder_items, list_items, list_all_items, list_all_items_meta, search_items, save_image, get_image, get_image_base64,
     export_data, export_data_to_file, import_data, import_data_from_file,
     backup_database, restore_database,
 };
@@ -17,7 +17,7 @@ pub fn run() {
         .manage(db)
         .invoke_handler(tauri::generate_handler![
             create_item, get_item, update_item, delete_item, move_item,
-            reorder_items, list_items, list_all_items, search_items, save_image, get_image, get_image_base64,
+            reorder_items, list_items, list_all_items, list_all_items_meta, search_items, save_image, get_image, get_image_base64,
             export_data, export_data_to_file, import_data, import_data_from_file,
             backup_database, restore_database
         ])

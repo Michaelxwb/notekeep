@@ -64,8 +64,8 @@ def main() -> None:
         if not isinstance(prompt, str) or not prompt.strip():
             return
 
-        project_root = os.getcwd()
-        
+        project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
         # Resolve session_id consistently with PreToolUse hook
         sid = resolve_session_id(data)
         debug_log(f"user_prompt_hook start session={sid} prompt_len={len(prompt)}", project_root)

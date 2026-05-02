@@ -12,38 +12,50 @@ interface EditorProps {
   noteName?: string;
   viewMode: ViewMode;
   onUpdate: (content: string) => void;
+  onHeadingsChange?: (headings: { level: number; text: string; id: string }[]) => void;
   onSave?: () => void;
 }
 
 export interface EditorHandle {
   insertContent: (content: string) => void;
+  wrapSelection: (prefix: string, suffix?: string, placeholder?: string) => void;
+  prefixLine: (prefix: string) => void;
   getContent: () => string;
 }
 
 marked.setOptions({ gfm: true, breaks: true });
+
+// Module-level cache: image paths are content-addressed (uuid filename), so a
+// path resolves to the same bytes for the lifetime of the app. Avoids re-IPC +
+// re-base64 on every keystroke-triggered preview render.
+const imageDataUrlCache = new Map<string, string>();
 
 async function resolveImages(html: string): Promise<string> {
   const matches = [...html.matchAll(/src="(\/[^"]+)"/g)];
   if (!matches.length) return html;
   const replacements = await Promise.all(
     matches.map(async ([full, path]) => {
-      try {
-        const dataUrl = await invoke<string>('get_image_base64', { path });
-        return { from: full, to: `src="${dataUrl}"` };
-      } catch {
-        return null;
+      let dataUrl = imageDataUrlCache.get(path);
+      if (!dataUrl) {
+        try {
+          dataUrl = await invoke<string>('get_image_base64', { path });
+          imageDataUrlCache.set(path, dataUrl);
+        } catch {
+          return null;
+        }
       }
+      return { from: full, to: `src="${dataUrl}"` };
     })
   );
   let resolved = html;
-  for (const r of replacements) {
+  replacements.forEach((r) => {
     if (r) resolved = resolved.replace(r.from, r.to);
-  }
+  });
   return resolved;
 }
 
 export const Editor = forwardRef<EditorHandle, EditorProps>(
-  ({ content, noteId, noteName, viewMode, onUpdate, onSave }, ref) => {
+  ({ content, noteId, viewMode, onUpdate, onHeadingsChange, onSave }, ref) => {
     const [markdown, setMarkdown] = useState(content);
     const [previewHtml, setPreviewHtml] = useState('');
     const [splitPct, setSplitPct] = useState(50);
@@ -60,7 +72,9 @@ export const Editor = forwardRef<EditorHandle, EditorProps>(
       }
     }, [content]);
 
-    // Debounced preview: render after 120ms of no typing
+    // Debounced preview: render after 120ms of no typing.
+    // Also pushes the latest headings up to the parent on the same cadence so
+    // the App tree never re-renders per keystroke.
     useEffect(() => {
       let cancelled = false;
       const timer = setTimeout(async () => {
@@ -68,11 +82,14 @@ export const Editor = forwardRef<EditorHandle, EditorProps>(
           const raw = String(marked.parse(markdown));
           const html = await resolveImages(raw);
           const sanitized = DOMPurify.sanitize(html);
-          if (!cancelled) setPreviewHtml(sanitized);
+          if (!cancelled) {
+            setPreviewHtml(sanitized);
+            onHeadingsChange?.(getHeadings(markdown));
+          }
         } catch { /* ignore parse errors */ }
       }, 120);
       return () => { cancelled = true; clearTimeout(timer); };
-    }, [markdown]);
+    }, [markdown, onHeadingsChange]);
 
     useImperativeHandle(ref, () => ({
       insertContent: (text: string) => {
@@ -84,7 +101,44 @@ export const Editor = forwardRef<EditorHandle, EditorProps>(
         setMarkdown(newVal);
         markdownRef.current = newVal;
         onUpdate(newVal);
-        setTimeout(() => { ta.selectionStart = ta.selectionEnd = start + text.length; }, 0);
+        setTimeout(() => { ta.focus(); ta.selectionStart = ta.selectionEnd = start + text.length; }, 0);
+      },
+      wrapSelection: (prefix: string, suffix: string = prefix, placeholder: string = '') => {
+        const ta = textareaRef.current;
+        if (!ta) return;
+        const start = ta.selectionStart;
+        const end = ta.selectionEnd;
+        const currentMd = markdownRef.current;
+        const selected = currentMd.slice(start, end);
+        const middle = selected || placeholder;
+        const newVal = currentMd.slice(0, start) + prefix + middle + suffix + currentMd.slice(end);
+        setMarkdown(newVal);
+        markdownRef.current = newVal;
+        onUpdate(newVal);
+        setTimeout(() => {
+          ta.focus();
+          if (selected) {
+            ta.selectionStart = start + prefix.length;
+            ta.selectionEnd = start + prefix.length + selected.length;
+          } else {
+            ta.selectionStart = ta.selectionEnd = start + prefix.length + middle.length;
+          }
+        }, 0);
+      },
+      prefixLine: (prefix: string) => {
+        const ta = textareaRef.current;
+        if (!ta) return;
+        const start = ta.selectionStart;
+        const currentMd = markdownRef.current;
+        const lineStart = currentMd.lastIndexOf('\n', start - 1) + 1;
+        const newVal = currentMd.slice(0, lineStart) + prefix + currentMd.slice(lineStart);
+        setMarkdown(newVal);
+        markdownRef.current = newVal;
+        onUpdate(newVal);
+        setTimeout(() => {
+          ta.focus();
+          ta.selectionStart = ta.selectionEnd = start + prefix.length;
+        }, 0);
       },
       getContent: () => markdownRef.current,
     }));
@@ -161,46 +215,52 @@ export const Editor = forwardRef<EditorHandle, EditorProps>(
         value={markdown}
         onChange={handleChange}
         onPaste={handlePaste}
-        className="flex-1 w-full resize-none bg-transparent text-[#d4d4d4] font-mono text-sm leading-7 outline-none"
+        className="flex-1 w-full resize-none bg-transparent text-[#d4d4d4] font-mono text-[13.5px] leading-[1.85] tracking-[0.01em] outline-none caret-[#a78bfa]"
         placeholder="# Start writing markdown..."
         spellCheck={false}
       />
     );
 
     const previewEl = (
-      <div className="note-preview text-[#eaeaea] leading-7" dangerouslySetInnerHTML={{ __html: previewHtml }} />
+      <div className="note-preview text-[#eaeaea] leading-[1.85]" dangerouslySetInnerHTML={{ __html: previewHtml }} />
     );
 
     return (
-      <div className="flex-1 flex flex-col overflow-hidden">
+      <div className="flex-1 flex flex-col overflow-hidden editor-bg">
         {viewMode === 'edit' && (
-          <div className="flex-1 overflow-y-auto p-8">
-            <div className="max-w-3xl mx-auto h-full flex flex-col">
-              {noteName && <h1 className="text-2xl font-bold mb-4 text-[#eaeaea]">{noteName}</h1>}
-              {textareaEl}
+          <div className="flex-1 overflow-y-auto p-6">
+            <div className="max-w-4xl mx-auto h-full flex flex-col">
+              <div className="note-editor-card flex-1 flex flex-col p-6">
+                {textareaEl}
+              </div>
             </div>
           </div>
         )}
 
         {viewMode === 'split' && (
-          <div ref={containerRef} className="flex-1 flex overflow-hidden">
-            <div className="overflow-y-auto p-5 flex flex-col flex-shrink-0" style={{ width: `${splitPct}%` }}>
-              <div className="text-[10px] text-gray-500 uppercase tracking-widest mb-3 flex-shrink-0">Markdown</div>
-              {textareaEl}
+          <div ref={containerRef} className="flex-1 flex overflow-hidden p-3 gap-2">
+            <div className="overflow-hidden flex flex-col flex-shrink-0" style={{ width: `calc(${splitPct}% - 6px)` }}>
+              <div className="note-editor-card flex-1 flex flex-col p-5 overflow-hidden">
+                <div className="editor-pane-label mb-3 flex-shrink-0">Markdown</div>
+                <div className="flex-1 overflow-y-auto flex flex-col">{textareaEl}</div>
+              </div>
             </div>
-            <div onMouseDown={onDividerMouseDown} className="w-1 flex-shrink-0 bg-gray-700/70 hover:bg-[#7c3aed]/70 cursor-col-resize transition-colors" />
-            <div className="flex-1 overflow-y-auto p-5 min-w-0">
-              <div className="text-[10px] text-gray-500 uppercase tracking-widest mb-3">Preview</div>
-              {previewEl}
+            <div onMouseDown={onDividerMouseDown} className="w-1 flex-shrink-0 self-stretch rounded-full bg-gray-700/40 hover:bg-[#7c3aed]/70 cursor-col-resize transition-colors" />
+            <div className="flex-1 overflow-hidden min-w-0 flex flex-col">
+              <div className="note-editor-card flex-1 flex flex-col p-5 overflow-hidden">
+                <div className="editor-pane-label mb-3">Preview</div>
+                <div className="flex-1 overflow-y-auto">{previewEl}</div>
+              </div>
             </div>
           </div>
         )}
 
         {viewMode === 'preview' && (
-          <div className="flex-1 overflow-y-auto p-8">
-            <div className="max-w-3xl mx-auto">
-              {noteName && <h1 className="text-2xl font-bold mb-4 text-[#eaeaea]">{noteName}</h1>}
-              {previewEl}
+          <div className="flex-1 overflow-y-auto p-6">
+            <div className="max-w-4xl mx-auto">
+              <div className="note-editor-card p-6">
+                {previewEl}
+              </div>
             </div>
           </div>
         )}

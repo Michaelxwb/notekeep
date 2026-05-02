@@ -1,12 +1,12 @@
-import React, { useState, useMemo, memo, useCallback } from 'react';
+import { useState, useMemo } from 'react';
 import { DayPicker, useDayPicker, type MonthCaptionProps } from 'react-day-picker';
 import { format } from 'date-fns';
 import type { NoteItem } from '../hooks/useNotes';
 import { ContextMenu } from './ContextMenu';
 import { Dialog } from './Dialog';
-import { DragSortable } from './DragSortable';
+import { SortableFolderContent } from './DragSortable';
 import { useLanguage } from '../contexts/LanguageContext';
-import { Folder, Plus, ChevronRight, ChevronDown, Trash2, BookOpen, FolderPlus, ChevronLeft, FileText } from 'lucide-react';
+import { Plus, Trash2, BookOpen, FolderPlus, ChevronLeft, ChevronRight } from 'lucide-react';
 
 function CalendarCaption({ calendarMonth }: MonthCaptionProps) {
   const { goToMonth, previousMonth, nextMonth } = useDayPicker();
@@ -61,167 +61,6 @@ function saveExpandedFolders(ids: Set<string>) {
   localStorage.setItem('notekeep:expandedFolders', JSON.stringify([...ids]));
 }
 
-interface FolderNodeProps {
-  folder: NoteItem;
-  childrenByParent: Map<string, NoteItem[]>;
-  expandedFolders: Set<string>;
-  editingId: string | null;
-  editingName: string;
-  selectedNoteId: string | null;
-  onToggle: (id: string) => void;
-  onContextMenu: (e: React.MouseEvent, item: NoteItem) => void;
-  onCreateNote: (parentId?: string) => void;
-  onCreateFolder: (parentId?: string) => void;
-  onDelete: (id: string) => void;
-  onSelectNote: (id: string) => void;
-  onStartEdit: (id: string, name: string) => void;
-  onFinishEdit: (id: string, name: string) => void;
-  onCancelEdit: () => void;
-  onEditNameChange: (name: string) => void;
-}
-
-const FolderNode = memo(function FolderNode({
-  folder,
-  childrenByParent,
-  expandedFolders,
-  editingId,
-  editingName,
-  selectedNoteId,
-  onToggle,
-  onContextMenu,
-  onCreateNote,
-  onCreateFolder,
-  onDelete,
-  onSelectNote,
-  onStartEdit,
-  onFinishEdit,
-  onCancelEdit,
-  onEditNameChange,
-}: FolderNodeProps) {
-  const children = childrenByParent.get(folder.id) ?? [];
-  const expanded = expandedFolders.has(folder.id);
-  const childFolders = children.filter((c) => c.item_type === 'folder');
-  const childNotes = children.filter((c) => c.item_type === 'note');
-
-  return (
-    <div className="mt-0.5">
-      <div
-        className="flex items-center gap-1.5 px-1 py-1 rounded hover:bg-gray-700/60 cursor-pointer group transition-colors"
-        onClick={() => onToggle(folder.id)}
-        onContextMenu={(e) => onContextMenu(e, folder)}
-      >
-        <span className="text-gray-600 group-hover:text-gray-400 transition-colors">
-          {expanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
-        </span>
-        <Folder size={13} className="text-[#7c3aed] flex-shrink-0" />
-        {editingId === folder.id ? (
-          <input
-            autoFocus
-            value={editingName}
-            onChange={(e) => onEditNameChange(e.target.value)}
-            onBlur={() => onFinishEdit(folder.id, editingName)}
-            onKeyDown={(e) => {
-              e.stopPropagation();
-              if (e.key === 'Enter') onFinishEdit(folder.id, editingName);
-              if (e.key === 'Escape') onCancelEdit();
-            }}
-            onClick={(e) => e.stopPropagation()}
-            className="flex-1 bg-gray-600 text-sm text-white rounded px-1 outline-none min-w-0"
-          />
-        ) : (
-          <span
-            className="flex-1 text-sm text-gray-300 truncate"
-            onDoubleClick={(e) => { e.stopPropagation(); onStartEdit(folder.id, folder.name); }}
-          >
-            {folder.name}
-          </span>
-        )}
-        <button
-          onClick={(e) => { e.stopPropagation(); onCreateNote(folder.id); if (!expanded) onToggle(folder.id); }}
-          className="opacity-0 group-hover:opacity-100 text-gray-500 hover:text-gray-200 transition-opacity"
-          title="New note in folder"
-        >
-          <Plus size={11} />
-        </button>
-        <button
-          onClick={(e) => { e.stopPropagation(); onCreateFolder(folder.id); if (!expanded) onToggle(folder.id); }}
-          className="opacity-0 group-hover:opacity-100 text-gray-500 hover:text-gray-200 transition-opacity mr-0.5"
-          title="New folder inside"
-        >
-          <FolderPlus size={11} />
-        </button>
-        <button
-          onClick={(e) => { e.stopPropagation(); onDelete(folder.id); }}
-          className="opacity-0 group-hover:opacity-100 text-gray-500 hover:text-red-400 transition-opacity"
-        >
-          <Trash2 size={11} />
-        </button>
-      </div>
-      {expanded && children.length > 0 && (
-        <div className="ml-4 mt-0.5 border-l border-gray-700/50 pl-2">
-          {childFolders.map((sub) => (
-            <FolderNode
-              key={sub.id}
-              folder={sub}
-              childrenByParent={childrenByParent}
-              expandedFolders={expandedFolders}
-              editingId={editingId}
-              editingName={editingName}
-              selectedNoteId={selectedNoteId}
-              onToggle={onToggle}
-              onContextMenu={onContextMenu}
-              onCreateNote={onCreateNote}
-              onCreateFolder={onCreateFolder}
-              onDelete={onDelete}
-              onSelectNote={onSelectNote}
-              onStartEdit={onStartEdit}
-              onFinishEdit={onFinishEdit}
-              onCancelEdit={onCancelEdit}
-              onEditNameChange={onEditNameChange}
-            />
-          ))}
-          {childNotes.map((child) => (
-            <div
-              key={child.id}
-              onContextMenu={(e) => onContextMenu(e, child)}
-              className={`flex items-center gap-1.5 px-1 py-1 text-sm rounded transition-colors group ${
-                selectedNoteId === child.id
-                  ? 'bg-[#7c3aed]/20 text-white'
-                  : 'text-gray-300 hover:bg-gray-700/60 hover:text-white'
-              }`}
-            >
-              <FileText size={13} className="text-gray-400 flex-shrink-0" />
-              {editingId === child.id ? (
-                <input
-                  autoFocus
-                  value={editingName}
-                  onChange={(e) => onEditNameChange(e.target.value)}
-                  onBlur={() => onFinishEdit(child.id, editingName)}
-                  onKeyDown={(e) => {
-                    e.stopPropagation();
-                    if (e.key === 'Enter') onFinishEdit(child.id, editingName);
-                    if (e.key === 'Escape') onCancelEdit();
-                  }}
-                  onClick={(e) => e.stopPropagation()}
-                  className="flex-1 bg-gray-600 text-sm text-white rounded px-1 outline-none min-w-0"
-                />
-              ) : (
-                <span
-                  className="truncate flex-1 cursor-pointer"
-                  onClick={() => onSelectNote(child.id)}
-                  onDoubleClick={(e) => { e.stopPropagation(); onStartEdit(child.id, child.name); }}
-                >
-                  {child.name}
-                </span>
-              )}
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-});
-
 export function Sidebar({
   items,
   selectedDate,
@@ -253,10 +92,12 @@ export function Sidebar({
   };
 
   const toggleFolder = (id: string) => {
-    const next = new Set(expandedFolders);
-    if (next.has(id)) next.delete(id); else next.add(id);
-    setExpandedFolders(next);
-    saveExpandedFolders(next);
+    setExpandedFolders(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      saveExpandedFolders(next);
+      return next;
+    });
   };
 
   const openContextMenu = (e: React.MouseEvent, item?: NoteItem) => {
@@ -289,41 +130,39 @@ export function Sidebar({
     [items]
   );
 
+  const allRootItems = useMemo(() => {
+    const all = [...rootNotes, ...rootFolders];
+    all.sort((a, b) => a.sort_order - b.sort_order);
+    return all;
+  }, [rootNotes, rootFolders]);
+
   const selectedDateStr = selectedDate ? format(selectedDate, 'yyyy-MM-dd') : null;
   const [calendarOpen, setCalendarOpen] = useState(false);
 
-  const diaryEntries = useMemo(() => items
-    .filter((i) => i.item_type === 'note' && !!i.date)
-    .sort((a, b) => (b.date ?? '').localeCompare(a.date ?? '')),
-  [items]);
-
-  const allDiaryByDate = useMemo(() => {
-    const map = new Map<string, NoteItem[]>();
-    diaryEntries.forEach((e) => {
-      if (!map.has(e.date!)) map.set(e.date!, []);
-      map.get(e.date!)!.push(e);
+  // Single pass: collect entries, group by date, group by month.
+  // Sort entries once; per-month/date arrays inherit that order.
+  const { allDiaryByDate, diaryMonthGroups } = useMemo(() => {
+    const entries: NoteItem[] = [];
+    items.forEach((i) => {
+      if (i.item_type === 'note' && i.date) entries.push(i);
     });
-    return map;
-  }, [diaryEntries]);
+    entries.sort((a, b) => (b.date ?? '').localeCompare(a.date ?? ''));
 
-  const diaryMonthGroups = useMemo(() => {
-    const groups = new Map<string, NoteItem[]>();
-    diaryEntries.forEach((i) => {
-      const month = i.date!.slice(0, 7);
-      if (!groups.has(month)) groups.set(month, []);
-      groups.get(month)!.push(i);
+    const byDate = new Map<string, NoteItem[]>();
+    const byMonth = new Map<string, NoteItem[]>();
+    entries.forEach((e) => {
+      const date = e.date!;
+      const dateBucket = byDate.get(date);
+      if (dateBucket) dateBucket.push(e);
+      else byDate.set(date, [e]);
+
+      const month = date.slice(0, 7);
+      const monthBucket = byMonth.get(month);
+      if (monthBucket) monthBucket.push(e);
+      else byMonth.set(month, [e]);
     });
-    return groups;
-  }, [diaryEntries]);
-
-  // Folder callbacks memoized so they don't change identity every render
-  const handleToggle = useCallback((id: string) => toggleFolder(id), [expandedFolders]);
-  const handleContextMenu = useCallback((e: React.MouseEvent, item: NoteItem) => openContextMenu(e, item), []);
-  const handleDelete = useCallback((id: string) => setDeleteConfirm(id), []);
-  const handleStartEdit = useCallback((id: string, name: string) => startEdit(id, name), []);
-  const handleFinishEdit = useCallback((id: string, name: string) => finishEdit(id, name), [onRenameItem]);
-  const handleCancelEdit = useCallback(() => cancelEdit(), []);
-  const handleEditNameChange = useCallback((name: string) => setEditingName(name), []);
+    return { allDiaryByDate: byDate, diaryMonthGroups: byMonth };
+  }, [items]);
 
   return (
     <aside className="w-64 border-r border-gray-700/60 flex flex-col h-full bg-[#161625] select-none">
@@ -375,45 +214,29 @@ export function Sidebar({
 
       {/* ── Notes tab ───────────────────────────────────── */}
       {activeTab === 'notes' && (
-        <div className="flex-1 overflow-y-auto px-2 py-2">
-          <DragSortable
-            items={rootNotes}
-            onReorder={onReorderItems}
-            onDelete={(id) => setDeleteConfirm(id)}
-            onContextMenu={openContextMenu}
-            onSelect={onSelectNote}
-            selectedId={selectedNoteId}
-            editingId={editingId}
-            editingName={editingName}
-            onStartEdit={startEdit}
-            onFinishEdit={finishEdit}
-            onCancelEdit={cancelEdit}
-            onEditNameChange={setEditingName}
-          />
-          {rootFolders.map((folder) => (
-            <FolderNode
-              key={folder.id}
-              folder={folder}
+        <div className="flex-1 overflow-auto">
+          <div className="px-2 py-2 min-w-max">
+            <SortableFolderContent
+              items={allRootItems}
               childrenByParent={childrenByParent}
               expandedFolders={expandedFolders}
+              onReorder={onReorderItems}
+              onDelete={(id) => setDeleteConfirm(id)}
+              onContextMenu={openContextMenu}
+              onSelect={onSelectNote}
+              selectedId={selectedNoteId}
               editingId={editingId}
               editingName={editingName}
-              selectedNoteId={selectedNoteId}
-              onToggle={handleToggle}
-              onContextMenu={handleContextMenu}
-              onCreateNote={onCreateNote}
-              onCreateFolder={onCreateFolder}
-              onDelete={handleDelete}
-              onSelectNote={onSelectNote}
-              onStartEdit={handleStartEdit}
-              onFinishEdit={handleFinishEdit}
-              onCancelEdit={handleCancelEdit}
-              onEditNameChange={handleEditNameChange}
+              onStartEdit={startEdit}
+              onFinishEdit={finishEdit}
+              onCancelEdit={cancelEdit}
+              onEditNameChange={setEditingName}
+              onToggle={toggleFolder}
             />
-          ))}
-          {rootNotes.length === 0 && rootFolders.length === 0 && (
-            <p className="text-xs text-gray-600 px-1 py-2">{t('noNotes')}</p>
-          )}
+            {allRootItems.length === 0 && (
+              <p className="text-xs text-gray-600 px-1 py-2">{t('noNotes')}</p>
+            )}
+          </div>
         </div>
       )}
 

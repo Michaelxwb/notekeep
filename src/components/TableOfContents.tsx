@@ -61,17 +61,33 @@ export function TableOfContents({ headings }: TableOfContentsProps) {
             </button>
           </div>
           <nav className="overflow-y-auto px-3 pb-3 space-y-0.5">
-            {headings.map((h, i) => (
-              <button
-                key={i}
-                onClick={() => scrollTo(h.text)}
-                className="block w-full text-left text-sm py-1 text-gray-300 hover:text-[#a78bfa] truncate transition-colors rounded px-1 hover:bg-gray-700/50"
-                style={{ paddingLeft: `${(h.level - 1) * 10 + 4}px` }}
-                title={h.text}
-              >
-                {h.text}
-              </button>
-            ))}
+            {headings.map((h, i) => {
+              const lvl = Math.min(h.level, 4);
+              const styleByLevel: Record<number, string> = {
+                1: 'text-sm font-semibold text-gray-100',
+                2: 'text-sm text-gray-300',
+                3: 'text-xs text-gray-400',
+                4: 'text-xs text-gray-500',
+              };
+              return (
+                <button
+                  key={i}
+                  onClick={() => scrollTo(h.text)}
+                  className={`relative block w-full text-left py-1 hover:text-[#a78bfa] truncate transition-colors rounded pr-1 hover:bg-gray-700/50 ${styleByLevel[lvl]}`}
+                  style={{ paddingLeft: `${(h.level - 1) * 12 + 8}px` }}
+                  title={h.text}
+                >
+                  {h.level > 1 && (
+                    <span
+                      aria-hidden
+                      className="absolute top-0 bottom-0 w-px bg-gray-700/60"
+                      style={{ left: `${(h.level - 1) * 12}px` }}
+                    />
+                  )}
+                  {h.text}
+                </button>
+              );
+            })}
           </nav>
         </div>
       )}

@@ -25,8 +25,9 @@ impl Db {
             "PRAGMA foreign_keys = ON;
              PRAGMA journal_mode = WAL;
              PRAGMA synchronous = NORMAL;
-             PRAGMA cache_size = -8000;
-             PRAGMA mmap_size = 268435456;"
+             PRAGMA cache_size = -32000;
+             PRAGMA mmap_size = 268435456;
+             PRAGMA temp_store = MEMORY;"
         )?;
         let db = Db { conn: Mutex::new(conn) };
         db.init_tables()?;
@@ -60,7 +61,8 @@ impl Db {
             );
 
             CREATE VIRTUAL TABLE IF NOT EXISTS items_fts USING fts5(
-                name, content, content='items', content_rowid='rowid'
+                name, content, content='items', content_rowid='rowid',
+                tokenize='trigram'
             );
 
             CREATE TRIGGER IF NOT EXISTS items_ai AFTER INSERT ON items BEGIN
@@ -86,16 +88,35 @@ impl Db {
             CREATE INDEX IF NOT EXISTS idx_images_note ON images(note_id);"
         )?;
 
-        // Rebuild FTS index for existing rows (handles migration from pre-trigger schema)
-        let has_items: bool = conn.query_row(
-            "SELECT COUNT(*) > 0 FROM items", [], |r| r.get(0)
-        ).unwrap_or(false);
-        if has_items {
-            let has_fts: bool = conn.query_row(
-                "SELECT COUNT(*) > 0 FROM items_fts", [], |r| r.get(0)
+        // Migrate existing FTS table to trigram tokenizer for CJK substring search.
+        // The CREATE statement above is `IF NOT EXISTS`, so existing DBs keep old tokenizer.
+        let fts_sql: String = conn.query_row(
+            "SELECT sql FROM sqlite_master WHERE type='table' AND name='items_fts'",
+            [], |r| r.get(0)
+        ).unwrap_or_default();
+
+        if !fts_sql.is_empty() && !fts_sql.contains("trigram") {
+            log::info!("migrating items_fts to trigram tokenizer");
+            conn.execute_batch(
+                "DROP TABLE items_fts;
+                 CREATE VIRTUAL TABLE items_fts USING fts5(
+                     name, content, content='items', content_rowid='rowid',
+                     tokenize='trigram'
+                 );
+                 INSERT INTO items_fts(items_fts) VALUES ('rebuild');"
+            )?;
+        } else {
+            // Rebuild FTS index for existing rows (handles migration from pre-trigger schema)
+            let has_items: bool = conn.query_row(
+                "SELECT COUNT(*) > 0 FROM items", [], |r| r.get(0)
             ).unwrap_or(false);
-            if !has_fts {
-                conn.execute_batch("INSERT INTO items_fts(items_fts) VALUES ('rebuild')")?;
+            if has_items {
+                let has_fts: bool = conn.query_row(
+                    "SELECT COUNT(*) > 0 FROM items_fts", [], |r| r.get(0)
+                ).unwrap_or(false);
+                if !has_fts {
+                    conn.execute_batch("INSERT INTO items_fts(items_fts) VALUES ('rebuild')")?;
+                }
             }
         }
 
@@ -158,39 +179,34 @@ impl Db {
     }
 
     pub fn delete_item(&self, id: &str) -> SqliteResult<()> {
-        let mut conn = self.conn();
+        let conn = self.conn();
 
-        // BFS to collect all descendant IDs
-        let mut to_delete = vec![id.to_string()];
-        let mut i = 0;
-        while i < to_delete.len() {
-            let mut stmt = conn.prepare("SELECT id FROM items WHERE parent_id = ?1")?;
-            let children: Vec<String> = stmt.query_map(params![to_delete[i]], |row| row.get(0))?
+        // Collect all image paths under the deleted subtree in one CTE pass.
+        // Files are removed AFTER the DB commit so a failed delete leaves them
+        // available for retry rather than orphaning a half-deleted state.
+        let mut paths: Vec<String> = {
+            let mut stmt = conn.prepare(
+                "WITH RECURSIVE descendants(id) AS (
+                     SELECT id FROM items WHERE id = ?1
+                     UNION ALL
+                     SELECT i.id FROM items i
+                     JOIN descendants d ON i.parent_id = d.id
+                 )
+                 SELECT path FROM images WHERE note_id IN (SELECT id FROM descendants)"
+            )?;
+            let collected: Vec<String> = stmt.query_map(params![id], |row| row.get(0))?
                 .filter_map(|r| r.ok())
                 .collect();
-            to_delete.extend(children);
-            i += 1;
-        }
+            collected
+        };
 
-        // Delete image files from disk before DB transaction
-        for del_id in &to_delete {
-            let mut stmt = conn.prepare("SELECT path FROM images WHERE note_id = ?1")?;
-            let paths: Vec<String> = stmt.query_map(params![del_id], |row| row.get(0))?
-                .filter_map(|r| r.ok())
-                .collect();
-            for path in paths {
-                let full_path = get_data_dir().join(&path);
-                let _ = std::fs::remove_file(full_path);
-            }
-        }
+        // FK ON DELETE CASCADE handles all descendant items + images rows.
+        conn.execute("DELETE FROM items WHERE id = ?1", params![id])?;
 
-        // Delete all in a single transaction
-        let tx = conn.transaction()?;
-        for del_id in &to_delete {
-            tx.execute("DELETE FROM images WHERE note_id = ?1", params![del_id])?;
-            tx.execute("DELETE FROM items WHERE id = ?1", params![del_id])?;
+        let data_dir = get_data_dir();
+        for path in paths.drain(..) {
+            let _ = std::fs::remove_file(data_dir.join(&path));
         }
-        tx.commit()?;
 
         Ok(())
     }
@@ -278,15 +294,64 @@ impl Db {
         Ok(items)
     }
 
+    /// Same as `list_all_items` but the `content` column is returned as an empty
+    /// string. The frontend tree view never reads content; selected notes load
+    /// their body lazily via `get_item`. Skipping content keeps the IPC payload
+    /// small even with thousands of notes.
+    pub fn list_all_items_meta(&self) -> SqliteResult<Vec<Item>> {
+        let conn = self.conn();
+        let mut stmt = conn.prepare(
+            "SELECT id, parent_id, name, type, date, '' AS content, sort_order, created_at, updated_at
+             FROM items ORDER BY parent_id NULLS FIRST, sort_order ASC"
+        )?;
+        let items = stmt.query_map([], |row| Item::from_row(row))?
+            .filter_map(|r| r.ok())
+            .collect();
+        Ok(items)
+    }
+
     pub fn search_items(&self, query: &str) -> SqliteResult<Vec<SearchResult>> {
-        if query.trim().is_empty() {
+        let q = query.trim();
+        if q.is_empty() {
             return Ok(vec![]);
         }
 
         let conn = self.conn();
 
+        // trigram tokenizer requires ≥3 characters per query token; fall back to
+        // LIKE for shorter queries (common for CJK searches like "天气" or "今天").
+        if q.chars().count() < 3 {
+            let escaped = q
+                .replace('\\', r"\\")
+                .replace('%', r"\%")
+                .replace('_', r"\_");
+            let pattern = format!("%{}%", escaped);
+            let mut stmt = conn.prepare(
+                "SELECT id, name, date, content
+                 FROM items
+                 WHERE name LIKE ?1 ESCAPE '\\' OR content LIKE ?1 ESCAPE '\\'
+                 ORDER BY updated_at DESC
+                 LIMIT 50"
+            )?;
+            let results = stmt.query_map(params![pattern], |row| {
+                let id: String = row.get(0)?;
+                let name: String = row.get(1)?;
+                let date: Option<String> = row.get(2)?;
+                let content: String = row.get(3)?;
+                let snippet = if content.contains(q) {
+                    make_snippet(&content, q, 16)
+                } else {
+                    make_snippet(&name, q, 16)
+                };
+                Ok(SearchResult { id, name, date, snippet })
+            })?
+            .filter_map(|r| r.ok())
+            .collect();
+            return Ok(results);
+        }
+
         // Wrap each token in quotes for safe literal FTS5 matching
-        let fts_query: String = query.split_whitespace()
+        let fts_query: String = q.split_whitespace()
             .map(|word| format!("\"{}\"", word.replace('"', "")))
             .collect::<Vec<_>>()
             .join(" ");
@@ -369,6 +434,36 @@ impl Db {
 
         Ok(image)
     }
+}
+
+/// Build a `<mark>`-highlighted snippet around the first occurrence of `query` in `text`.
+/// `ctx_chars` is how many characters of context to include on each side. Falls back to
+/// the leading slice of `text` when `query` is not found (e.g. case-mismatched LIKE hits).
+fn make_snippet(text: &str, query: &str, ctx_chars: usize) -> String {
+    let Some(byte_pos) = text.find(query) else {
+        return text.chars().take(ctx_chars * 2).collect();
+    };
+    let byte_end = byte_pos + query.len();
+
+    let chars: Vec<(usize, char)> = text.char_indices().collect();
+    let match_char_idx = chars.iter().position(|(i, _)| *i == byte_pos).unwrap_or(0);
+    let end_char_idx = chars.iter().position(|(i, _)| *i >= byte_end).unwrap_or(chars.len());
+
+    let start_char = match_char_idx.saturating_sub(ctx_chars);
+    let end_char = (end_char_idx + ctx_chars).min(chars.len());
+
+    let start_byte = chars.get(start_char).map(|(i, _)| *i).unwrap_or(0);
+    let end_byte = chars.get(end_char).map(|(i, _)| *i).unwrap_or(text.len());
+
+    let mut s = String::with_capacity(end_byte.saturating_sub(start_byte) + 16);
+    if start_byte > 0 { s.push_str("..."); }
+    s.push_str(&text[start_byte..byte_pos]);
+    s.push_str("<mark>");
+    s.push_str(&text[byte_pos..byte_end]);
+    s.push_str("</mark>");
+    s.push_str(&text[byte_end..end_byte]);
+    if end_byte < text.len() { s.push_str("..."); }
+    s
 }
 
 fn get_data_dir() -> PathBuf {
@@ -485,6 +580,11 @@ pub fn list_items(db: tauri::State<Db>, parent_id: Option<String>, item_type: Op
 #[tauri::command]
 pub fn list_all_items(db: tauri::State<Db>) -> Result<Vec<Item>, String> {
     db.list_all_items().map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn list_all_items_meta(db: tauri::State<Db>) -> Result<Vec<Item>, String> {
+    db.list_all_items_meta().map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -975,10 +1075,45 @@ mod tests {
     fn test_search_items() {
         let db = test_db();
         let id = db.create_item(None, "UniqueSearchTerm", "note", None).unwrap();
-        db.update_item(&id, None, Some("This note contains UniqueSearchTerm"), None).unwrap();
+        db.update_item(&id, None, Some("This note contains UniqueSearchTerm here"), None).unwrap();
         let results = db.search_items("UniqueSearchTerm").unwrap();
         assert_eq!(results.len(), 1);
-        assert!(results[0].snippet.contains("UniqueSearchTerm"));
+        assert!(results[0].snippet.contains("<mark>"));
+        assert!(results[0].snippet.contains("UniqueSearch"));
+    }
+
+    #[test]
+    fn test_search_short_cjk_uses_like_fallback() {
+        let db = test_db();
+        let id = db.create_item(None, "日记01", "note", Some("2024-05-01")).unwrap();
+        db.update_item(&id, None, Some("今天天气很好，心情愉悦"), None).unwrap();
+        // 2-char query falls below trigram's 3-char minimum -> LIKE fallback
+        let results = db.search_items("天气").unwrap();
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].id, id);
+        assert!(results[0].snippet.contains("<mark>天气</mark>"));
+    }
+
+    #[test]
+    fn test_search_long_cjk_uses_trigram() {
+        let db = test_db();
+        let id = db.create_item(None, "日记01", "note", Some("2024-05-01")).unwrap();
+        db.update_item(&id, None, Some("今天天气很好，心情愉悦"), None).unwrap();
+        let results = db.search_items("天气很好").unwrap();
+        assert_eq!(results.len(), 1, "trigram tokenizer should match CJK substring");
+        assert_eq!(results[0].id, id);
+        assert!(results[0].snippet.contains("<mark>"));
+    }
+
+    #[test]
+    fn test_search_finds_diary_content() {
+        let db = test_db();
+        let diary_id = db.create_item(None, "Diary 2024-01-01", "note", Some("2024-01-01")).unwrap();
+        db.update_item(&diary_id, None, Some("worked on FTS migration today"), None).unwrap();
+        let results = db.search_items("migration").unwrap();
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].id, diary_id);
+        assert_eq!(results[0].date.as_deref(), Some("2024-01-01"));
     }
 
     #[test]

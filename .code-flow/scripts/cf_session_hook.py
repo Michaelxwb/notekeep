@@ -11,7 +11,7 @@ def main() -> None:
     Other sessions will detect the PID mismatch and reset their own state.
     """
     try:
-        project_root = os.getcwd()
+        project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
         state_path = os.path.join(project_root, ".code-flow", ".inject-state")
         payload = {
             "session_id": str(os.getpid()),

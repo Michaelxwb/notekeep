@@ -158,6 +158,18 @@ export function useNotes() {
     }
   }, []);
 
+  // Tree-view metadata only — `content` field comes back empty.
+  // Use this for the sidebar tree to keep the IPC payload small.
+  const listAllItemsMeta = useCallback(async (): Promise<NoteItem[]> => {
+    setError(null);
+    try {
+      return await invoke<NoteItem[]>('list_all_items_meta');
+    } catch (e) {
+      setError(String(e));
+      throw e;
+    }
+  }, []);
+
   const searchItems = useCallback(async (query: string): Promise<SearchResult[]> => {
     setError(null);
     try {
@@ -208,6 +220,7 @@ export function useNotes() {
     reorderItems,
     listItems,
     listAllItems,
+    listAllItemsMeta,
     searchItems,
     saveImage,
     getImage,
