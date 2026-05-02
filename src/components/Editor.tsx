@@ -4,6 +4,8 @@ import { invoke } from '@tauri-apps/api/core';
 import { useState } from 'react';
 import DOMPurify from 'dompurify';
 
+import { getHeadings } from '../utils/headings';
+
 export type ViewMode = 'edit' | 'split' | 'preview';
 
 interface EditorProps {
@@ -16,12 +18,12 @@ interface EditorProps {
   onSave?: () => void;
 }
 
-export interface EditorHandle {
+export type EditorHandle = {
   insertContent: (content: string) => void;
   wrapSelection: (prefix: string, suffix?: string, placeholder?: string) => void;
   prefixLine: (prefix: string) => void;
   getContent: () => string;
-}
+};
 
 marked.setOptions({ gfm: true, breaks: true });
 
@@ -270,16 +272,3 @@ export const Editor = forwardRef<EditorHandle, EditorProps>(
 );
 
 Editor.displayName = 'Editor';
-
-export function getHeadings(content: string): { level: number; text: string; id: string }[] {
-  const headings: { level: number; text: string; id: string }[] = [];
-  for (const line of content.split('\n')) {
-    const m = line.match(/^(#{1,6})\s+(.+)/);
-    if (m) {
-      const level = m[1].length;
-      const text = m[2].trim();
-      headings.push({ level, text, id: text.toLowerCase().replace(/\s+/g, '-').replace(/[^\w-]/g, '') });
-    }
-  }
-  return headings;
-}

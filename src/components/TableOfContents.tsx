@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { List, X } from 'lucide-react';
-import { useLanguage } from '../contexts/LanguageContext';
+import { useLanguage } from '../contexts';
 
 interface Heading {
   level: number;

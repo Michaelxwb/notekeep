@@ -1,7 +1,7 @@
 # Component Specs
 
 ## Rules
-- Props 使用 interface 定义。
+- Props 使用 interface 定义，单独文件或组件上方声明（如 `SidebarProps`、`EditorProps`）。
 - 组件文件名与组件名一致。
 
 ## Patterns

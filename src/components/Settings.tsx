@@ -2,7 +2,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { save, open } from '@tauri-apps/plugin-dialog';
 import { format } from 'date-fns';
 import { X } from 'lucide-react';
-import { useLanguage } from '../contexts/LanguageContext';
+import { useLanguage } from '../contexts';
 import type { Lang } from '../i18n';
 
 interface SettingsProps {

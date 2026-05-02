@@ -1,15 +1,6 @@
-import { createContext, useContext, useState, type ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import { translations, type Lang, type TranslationKey } from '../i18n';
-
-interface LanguageContextValue {
-  lang: Lang;
-  setLang: (lang: Lang) => void;
-  t: (key: TranslationKey) => string;
-  isFirstRun: boolean;
-  completeFirstRun: (lang: Lang) => void;
-}
-
-const LanguageContext = createContext<LanguageContextValue | null>(null);
+import { LanguageContext } from './LanguageContextCore';
 
 export function LanguageProvider({ children }: { children: ReactNode }) {
   const stored = localStorage.getItem('notekeep:language') as Lang | null;
@@ -35,8 +26,4 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
   );
 }
 
-export function useLanguage() {
-  const ctx = useContext(LanguageContext);
-  if (!ctx) throw new Error('useLanguage must be used within LanguageProvider');
-  return ctx;
-}
+LanguageContext.displayName = 'LanguageContext';

@@ -1,12 +1,13 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useNotes } from './hooks/useNotes';
 import type { NoteItem } from './hooks/useNotes';
-import { Editor, getHeadings } from './components/Editor';
+import { Editor } from './components/Editor';
 import type { EditorHandle, ViewMode } from './components/Editor';
+import { getHeadings } from './utils/headings';
 import { Sidebar } from './components/Sidebar';
 import { TableOfContents } from './components/TableOfContents';
 import { Settings } from './components/Settings';
-import { useLanguage } from './contexts/LanguageContext';
+import { useLanguage } from './contexts';
 import { format } from 'date-fns';
 import {
   FileText, Search, Pencil, Columns2, Eye, Settings2, Loader2,

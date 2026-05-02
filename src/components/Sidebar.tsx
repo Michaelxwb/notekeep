@@ -5,7 +5,7 @@ import type { NoteItem } from '../hooks/useNotes';
 import { ContextMenu } from './ContextMenu';
 import { Dialog } from './Dialog';
 import { SortableFolderContent } from './DragSortable';
-import { useLanguage } from '../contexts/LanguageContext';
+import { useLanguage } from '../contexts';
 import { Plus, Trash2, BookOpen, FolderPlus, ChevronLeft, ChevronRight } from 'lucide-react';
 
 function CalendarCaption({ calendarMonth }: MonthCaptionProps) {

@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { useLanguage } from '../contexts/LanguageContext';
+import { useLanguage } from '../contexts';
 
 interface ContextMenuProps {
   x: number;

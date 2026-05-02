@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { X } from 'lucide-react';
-import { useLanguage } from '../contexts/LanguageContext';
+import { useLanguage } from '../contexts';
 
 interface DialogProps {
   open: boolean;
@@ -23,7 +23,7 @@ export function Dialog({
   const [value, setValue] = useState(initialValue);
 
   useEffect(() => {
-    setValue(initialValue);
+    if (open) setValue(initialValue);
   }, [initialValue, open]);
 
   if (!open) return null;

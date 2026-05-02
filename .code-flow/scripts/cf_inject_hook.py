@@ -40,7 +40,7 @@ def main() -> None:
         if not isinstance(file_path, str) or not file_path:
             return
 
-        project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        project_root = os.getcwd()
         abs_path = file_path
         if not os.path.isabs(abs_path):
             abs_path = os.path.join(project_root, file_path)
@@ -60,14 +60,7 @@ def main() -> None:
         effective_mapping = build_effective_mapping(project_root, mapping)
         domains = match_domains(rel_path, effective_mapping)
 
-        # Load state with session isolation (fix #10)
         sid = resolve_session_id(data)
-        state = load_inject_state(project_root)
-        state_sid = state.get("session_id", "")
-        if state_sid != sid:
-            injected_specs = set()
-        else:
-            injected_specs = set(state.get("injected_specs") or [])
 
         # Extract context tags from file path
         context_tags = extract_context_tags(rel_path)
@@ -111,6 +104,13 @@ def main() -> None:
         if not selected:
             return
 
+        # Load state with session isolation (deferred until after match success)
+        state = load_inject_state(project_root)
+        if state.get("session_id", "") != sid:
+            injected_specs = set()
+        else:
+            injected_specs = set(state.get("injected_specs") or [])
+
         # Update state with newly injected spec paths
         new_injected = injected_specs | {s["path"] for s in selected}
         debug_log(f"inject_hook injected={[s['path'] for s in selected]} path={rel_path}", project_root)
@@ -135,7 +135,7 @@ def main() -> None:
                 "context_tags": sorted(context_tags),
                 "matched_specs": [s["path"] for s in selected],
             }
-        sys.stdout.write(json.dumps(payload))
+        sys.stdout.write(json.dumps(payload, ensure_ascii=False))
     except Exception as exc:
         # Fix #9: log errors to stderr instead of silently swallowing
         _log(f"cf_inject_hook error: {exc}")

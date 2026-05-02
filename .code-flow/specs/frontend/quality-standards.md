@@ -11,6 +11,8 @@
 - Tauri IPC 调用统一封装在 `hooks/useNotes.ts`。
 - 防抖保存：内容更新用 `setTimeout` 防抖，切换笔记时 flush 保存。
 - Ref 模式：当前内容/选中 ID 用 `useRef` 避免 stale closure。
+- localStorage 持久化必须用 try/catch 包裹，防止 SSR 或隐私模式报错。
+- useMemo 计算派生数据：优先构建 `childrenByParent` Map 而非 per-folder `.filter()` 调用，避免 O(n²)。
 
 ## Anti-Patterns
 - 禁止在 render 中发起异步请求。

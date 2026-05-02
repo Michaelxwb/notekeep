@@ -3,6 +3,7 @@
 ## Rules
 - 关键路径必须有结构化日志（使用 `log::info!` / `log::error!`）。
 - 所有 `Result` 必须用 `map_err(|e| e.to_string())` 转为 `String` 传给前端。
+- 图片存储路径：`images/<uuid>.<ext>`
 
 ## Patterns
 - 使用 `thiserror` 定义自定义错误类型。
