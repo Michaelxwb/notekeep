@@ -37,8 +37,8 @@ interface SidebarProps {
   items: NoteItem[];
   selectedDate: Date | undefined;
   onDateSelect: (date: Date | undefined) => void;
-  onCreateNote: (parentId?: string) => void;
-  onCreateFolder: (parentId?: string) => void;
+  onCreateNote: (parentId?: string) => Promise<string | undefined>;
+  onCreateFolder: (parentId?: string) => Promise<string | undefined>;
   onCreateDiary: () => void;
   onDeleteItem: (id: string) => void;
   onRenameItem: (id: string, newName: string) => void;
@@ -331,10 +331,24 @@ export function Sidebar({
           x={contextMenu.x}
           y={contextMenu.y}
           onClose={() => setContextMenu(null)}
-          onAction={(action) => {
-            if (action === 'newNote') onCreateNote();
-            else if (action === 'newFolder') onCreateFolder();
-            else if (action === 'delete') setDeleteConfirm(contextMenu.item.id);
+          onAction={async (action) => {
+            if (action === 'newNote') {
+              const ctx = contextMenu.item;
+              const parentId = ctx.item_type === 'folder' ? ctx.id : ctx.parent_id;
+              if (parentId) {
+                setExpandedFolders(prev => { const next = new Set(prev); next.add(parentId); saveExpandedFolders(next); return next; });
+              }
+              const newId = await onCreateNote(parentId ?? undefined);
+              if (newId) startEdit(newId, 'New Note');
+            } else if (action === 'newFolder') {
+              const ctx = contextMenu.item;
+              const parentId = ctx.item_type === 'folder' ? ctx.id : ctx.parent_id;
+              if (parentId) {
+                setExpandedFolders(prev => { const next = new Set(prev); next.add(parentId); saveExpandedFolders(next); return next; });
+              }
+              const newId = await onCreateFolder(parentId ?? undefined);
+              if (newId) startEdit(newId, 'New Folder');
+            } else if (action === 'delete') setDeleteConfirm(contextMenu.item.id);
           }}
           onRename={() => setRenameDialog({ id: contextMenu.item.id, name: contextMenu.item.name })}
         />

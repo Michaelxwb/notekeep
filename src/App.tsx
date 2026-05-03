@@ -105,7 +105,7 @@ function App() {
     }
   }, [getItem, updateItem]);
 
-  const handleCreateNote = async (parentId?: string) => {
+  const handleCreateNote = async (parentId?: string): Promise<string | undefined> => {
     try {
       const newId = await createItem(parentId ?? null, 'New Note', 'note', undefined);
       const now = nowStr();
@@ -120,6 +120,7 @@ function App() {
       setItems(prev => [...prev, newItem]);
       setSelectedNoteId(newId); selectedNoteIdRef.current = newId;
       setCurrentContent(''); currentContentRef.current = ''; setHeadings([]);
+      return newId;
     } catch (e) {
       console.error('Failed to create note:', e);
       await loadItems();
@@ -151,7 +152,7 @@ function App() {
     }
   };
 
-  const handleCreateFolder = async (parentId?: string) => {
+  const handleCreateFolder = async (parentId?: string): Promise<string | undefined> => {
     try {
       const newId = await createItem(parentId ?? null, 'New Folder', 'folder');
       const now = nowStr();
@@ -163,6 +164,7 @@ function App() {
         sort_order: maxOrder + 1, created_at: now, updated_at: now,
       };
       setItems(prev => [...prev, newItem]);
+      return newId;
     } catch (e) {
       console.error('Failed to create folder:', e);
       await loadItems();
