@@ -33,7 +33,7 @@ export function ContextMenu({ x, y, onClose, onAction, onRename }: ContextMenuPr
   return (
     <div
       ref={menuRef}
-      className="fixed bg-gray-800 rounded-lg shadow-lg border border-gray-700 py-1 min-w-[160px] z-50"
+      className="fixed bg-app-elevated rounded-app-md shadow-xl border border-app-border py-1 min-w-[160px] z-50 backdrop-blur-xl"
       style={{ left: x, top: y }}
     >
       {items.map((item) => (
@@ -47,8 +47,8 @@ export function ContextMenu({ x, y, onClose, onAction, onRename }: ContextMenuPr
             }
             onClose();
           }}
-          className={`w-full px-4 py-2 text-left text-sm hover:bg-gray-700 ${
-            item.danger ? 'text-red-400' : 'text-gray-200'
+          className={`w-full px-4 py-2 text-left text-sm rounded-app-sm hover:bg-accent/10 transition-colors duration-150 cursor-pointer ${
+            item.danger ? 'text-red-400 hover:bg-red-400/10' : 'text-app-text-secondary'
           }`}
         >
           {item.label}

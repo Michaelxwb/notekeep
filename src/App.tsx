@@ -5,12 +5,12 @@ import { Editor } from './components/Editor';
 import type { EditorHandle, ViewMode } from './components/Editor';
 import { getHeadings } from './utils/headings';
 import { Sidebar } from './components/Sidebar';
-import { TableOfContents } from './components/TableOfContents';
+import { TocOverlay } from './components/TableOfContents';
 import { Settings } from './components/Settings';
-import { useLanguage } from './contexts';
+import { useLanguage, useTheme } from './contexts';
 import { format } from 'date-fns';
 import {
-  FileText, Search, Pencil, Columns2, Eye, Settings2, Loader2,
+  FileText, Search, Pencil, Columns2, Eye, Settings2, Loader2, Sun, Moon,
   Bold, Italic, Strikethrough, Heading2, Link2, Quote, Code, List, ListOrdered,
 } from 'lucide-react';
 
@@ -22,17 +22,15 @@ const nowStr = () => {
 
 function App() {
   const { t, isFirstRun, completeFirstRun } = useLanguage();
-  const [error, setError] = useState<string | null>(null);
+  const { theme, toggleTheme } = useTheme();
+  const [dismissedError, setDismissedError] = useState<string | null>(null);
 
   const {
     listAllItemsMeta, createItem, deleteItem, updateItem, searchItems,
     reorderItems, getItem, loading, error: hookError,
   } = useNotes();
 
-  // Sync hook errors to display toast
-  useEffect(() => {
-    if (hookError) setError(hookError);
-  }, [hookError]);
+  const error = hookError && hookError !== dismissedError ? hookError : null;
 
   const [items, setItems] = useState<NoteItem[]>([]);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -44,6 +42,7 @@ function App() {
   const [currentContent, setCurrentContent] = useState('');
   const [headings, setHeadings] = useState<{ level: number; text: string; id: string }[]>([]);
   const [viewMode, setViewMode] = useState<ViewMode>('split');
+  const [tocOpen, setTocOpen] = useState(false);
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const currentContentRef = useRef('');
   const selectedNoteIdRef = useRef<string | null>(null);
@@ -62,22 +61,35 @@ function App() {
     }
   }, [listAllItemsMeta]);
 
-  useEffect(() => { loadItems(); }, [loadItems]);
+  useEffect(() => {
+    let ignore = false;
+    listAllItemsMeta().then((result) => {
+      if (ignore) return;
+      setItems(result);
+      setDiariesWithNotes(new Set(
+        result.filter((i) => i.item_type === 'note' && i.date).map((i) => i.date as string)
+      ));
+    }).catch(console.error);
+    return () => { ignore = true; };
+  }, [listAllItemsMeta]);
 
   // Auto-dismiss error toast
   useEffect(() => {
     if (!error) return;
-    const t = setTimeout(() => setError(null), 4000);
+    const t = setTimeout(() => setDismissedError(error), 4000);
     return () => clearTimeout(t);
   }, [error]);
 
   useEffect(() => {
-    if (searchQuery.length < 2) { setSearchResults([]); return; }
+    if (searchQuery.length < 2) return;
+    let ignore = false;
     const timer = setTimeout(async () => {
-      try { setSearchResults(await searchItems(searchQuery)); }
-      catch (e) { console.error('Search failed:', e); }
+      try {
+        const results = await searchItems(searchQuery);
+        if (!ignore) setSearchResults(results);
+      } catch (e) { console.error('Search failed:', e); }
     }, 300);
-    return () => clearTimeout(timer);
+    return () => { ignore = true; clearTimeout(timer); };
   }, [searchQuery, searchItems]);
 
   const handleSelectNote = useCallback(async (noteId: string) => {
@@ -252,13 +264,13 @@ function App() {
   const selectedNote = selectedNoteId ? items.find((n) => n.id === selectedNoteId) : null;
 
   const modeBtnCls = (mode: ViewMode) =>
-    `p-1.5 rounded transition-colors ${
+    `p-1.5 rounded-app-sm transition-colors duration-200 cursor-pointer ${
       viewMode === mode
-        ? 'text-[#a78bfa]'
-        : 'text-gray-600 hover:text-gray-300'
+        ? 'text-accent-light bg-accent/10'
+        : 'text-app-text-muted hover:text-app-text-secondary hover:bg-app-elevated'
     }`;
 
-  const tbBtnCls = 'p-1.5 rounded transition-colors text-gray-500 hover:text-gray-200 hover:bg-white/[0.04]';
+  const tbBtnCls = 'p-1.5 rounded-app-sm transition-colors duration-200 text-app-text-muted hover:text-app-text hover:bg-accent/10 cursor-pointer';
 
   const handleImportSuccess = useCallback(async () => {
     setSelectedNoteId(null);
@@ -270,23 +282,23 @@ function App() {
   }, [loadItems]);
 
   return (
-    <div className="flex h-full bg-[#1a1a2e] text-[#eaeaea]">
+    <div className="flex h-full bg-app-bg text-app-text">
       {/* First-run language picker */}
       {isFirstRun && (
-        <div className="fixed inset-0 bg-[#1a1a2e] flex items-center justify-center z-[100]">
+        <div className="fixed inset-0 bg-app-bg flex items-center justify-center z-[100]">
           <div className="text-center">
-            <h1 className="text-2xl font-bold text-gray-100 mb-2">{t('welcomeTitle')}</h1>
-            <p className="text-gray-500 mb-8 text-sm">{t('welcomeDesc')}</p>
+            <h1 className="text-2xl font-bold text-app-text mb-2">{t('welcomeTitle')}</h1>
+            <p className="text-app-text-muted mb-8 text-sm">{t('welcomeDesc')}</p>
             <div className="flex gap-4 justify-center">
               <button
                 onClick={() => completeFirstRun('zh')}
-                className="px-8 py-3 bg-[#7c3aed] text-white rounded-xl text-base font-medium hover:bg-[#6d28d9] transition-colors"
+                className="px-8 py-3 bg-accent text-white rounded-app-md text-sm font-medium hover:bg-accent-hover transition-colors duration-200 cursor-pointer"
               >
                 中文
               </button>
               <button
                 onClick={() => completeFirstRun('en')}
-                className="px-8 py-3 bg-white/[0.06] text-gray-200 rounded-xl text-base font-medium hover:bg-white/[0.10] transition-colors"
+                className="px-8 py-3 bg-app-elevated text-app-text-secondary rounded-app-md text-sm font-medium hover:bg-app-border hover:text-app-text transition-colors duration-200 cursor-pointer border border-app-border-subtle"
               >
                 English
               </button>
@@ -297,6 +309,7 @@ function App() {
 
       <Sidebar
         items={items}
+        headings={headings}
         selectedDate={selectedDate}
         onDateSelect={setSelectedDate}
         onCreateNote={handleCreateNote}
@@ -311,20 +324,20 @@ function App() {
       />
 
       <main className="flex-1 flex flex-col overflow-hidden">
-        <header className="h-12 border-b border-gray-700/50 bg-gradient-to-b from-[#1d1b3a]/40 to-transparent px-4 flex items-center gap-3 flex-shrink-0">
+        <header className="h-11 border-b border-app-border-subtle bg-app-sidebar/60 backdrop-blur-sm px-4 flex items-center gap-3 flex-shrink-0">
           {/* Left: current note title + markdown toolbar */}
           <div className="flex-1 min-w-0 flex items-center gap-2">
             {selectedNote ? (
-              <span className="flex items-center gap-2 text-sm font-medium text-gray-200 truncate max-w-[220px] flex-shrink-0">
-                <span className="w-1.5 h-1.5 rounded-full bg-[#a78bfa] flex-shrink-0" />
+              <span className="flex items-center gap-2 text-sm font-medium text-app-text truncate max-w-[220px] flex-shrink-0">
+                <span className="w-1.5 h-1.5 rounded-full bg-accent flex-shrink-0" />
                 <span className="truncate">{selectedNote.name}</span>
               </span>
             ) : (
-              <span className="text-sm text-gray-700 select-none">{t('appName')}</span>
+              <span className="text-sm text-app-text-muted select-none">{t('appName')}</span>
             )}
             {selectedNote && viewMode !== 'preview' && (
               <>
-                <span className="w-px h-5 bg-gray-700/70 mx-1 flex-shrink-0" />
+                <span className="w-px h-5 bg-app-border mx-1 flex-shrink-0" />
                 <div className="flex items-center gap-0.5 min-w-0">
                 <button type="button" title="Heading" className={tbBtnCls}
                   onMouseDown={(e) => e.preventDefault()}
@@ -338,7 +351,7 @@ function App() {
                 <button type="button" title="Strikethrough" className={tbBtnCls}
                   onMouseDown={(e) => e.preventDefault()}
                   onClick={() => editorRef.current?.wrapSelection('~~', '~~', 'text')}><Strikethrough size={14} /></button>
-                <span className="w-px h-4 bg-gray-700 mx-1" />
+                <span className="w-px h-4 bg-app-border mx-1" />
                 <button type="button" title="Link" className={tbBtnCls}
                   onMouseDown={(e) => e.preventDefault()}
                   onClick={() => editorRef.current?.wrapSelection('[', '](url)', 'text')}><Link2 size={14} /></button>
@@ -348,7 +361,7 @@ function App() {
                 <button type="button" title="Code" className={tbBtnCls}
                   onMouseDown={(e) => e.preventDefault()}
                   onClick={() => editorRef.current?.wrapSelection('`', '`', 'code')}><Code size={14} /></button>
-                <span className="w-px h-4 bg-gray-700 mx-1" />
+                <span className="w-px h-4 bg-app-border mx-1" />
                 <button type="button" title="Bulleted list" className={tbBtnCls}
                   onMouseDown={(e) => e.preventDefault()}
                   onClick={() => editorRef.current?.prefixLine('- ')}><List size={14} /></button>
@@ -362,48 +375,71 @@ function App() {
 
           {/* Center-right: search */}
           <div className="relative w-56">
-            <div className="flex items-center gap-2 bg-white/[0.04] border border-white/[0.06] rounded-lg px-3 py-1.5">
-              <Search size={13} className="text-gray-500 flex-shrink-0" />
+            <div className="flex items-center gap-2 bg-app-elevated border border-app-border-subtle focus-within:border-accent/40 rounded-app-md px-3 py-1.5 transition-colors duration-200">
+              <Search size={13} className="text-app-text-muted flex-shrink-0" />
               <input
                 type="text"
                 placeholder={t('searchPlaceholder')}
                 value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="bg-transparent border-none outline-none text-sm w-full text-gray-300 placeholder-gray-600"
+                onChange={(e) => { setSearchQuery(e.target.value); if (e.target.value.length < 2) setSearchResults([]); }}
+                className="bg-transparent border-none outline-none text-sm w-full text-app-text-secondary placeholder-app-text-placeholder"
               />
               {searchQuery && (
-                <button onClick={() => { setSearchQuery(''); setSearchResults([]); }} className="text-gray-500 hover:text-white text-xs leading-none">×</button>
+                <button onClick={() => { setSearchQuery(''); setSearchResults([]); }} className="text-app-text-muted hover:text-app-text text-xs leading-none cursor-pointer transition-colors">×</button>
               )}
             </div>
             {searchResults.length > 0 && (
-              <div className="absolute top-full right-0 mt-1 w-72 bg-[#1e1e32] rounded-xl shadow-2xl border border-gray-700/60 max-h-72 overflow-y-auto z-50">
+              <div className="absolute top-full right-0 mt-1.5 w-72 bg-app-elevated rounded-app-lg shadow-2xl border border-app-border max-h-72 overflow-y-auto z-50 backdrop-blur-xl">
                 {searchResults.map((result) => (
                   <div
                     key={result.id}
                     onClick={() => { handleSelectNote(result.id); setSearchQuery(''); setSearchResults([]); }}
-                    className="p-3 hover:bg-white/[0.04] cursor-pointer border-b border-gray-700/40 last:border-b-0"
+                    className="p-3 hover:bg-accent/10 cursor-pointer border-b border-app-border-subtle last:border-b-0 transition-colors duration-150"
                   >
-                    <div className="font-medium text-sm text-gray-200">{result.name}</div>
-                    <div className="text-xs text-gray-500 mt-0.5 search-snippet" dangerouslySetInnerHTML={{ __html: result.snippet }} />
+                    <div className="font-medium text-sm text-app-text">{result.name}</div>
+                    <div className="text-xs text-app-text-muted mt-0.5 search-snippet" dangerouslySetInnerHTML={{ __html: result.snippet }} />
                   </div>
                 ))}
               </div>
             )}
           </div>
 
-          {/* Right: view mode + settings */}
+          {/* Right: view mode + TOC + settings */}
           <div className="flex items-center gap-0.5">
             {selectedNote && (
               <>
                 <button className={modeBtnCls('edit')} onClick={() => setViewMode('edit')} title="Edit"><Pencil size={15} /></button>
                 <button className={modeBtnCls('split')} onClick={() => setViewMode('split')} title="Split"><Columns2 size={15} /></button>
                 <button className={modeBtnCls('preview')} onClick={() => setViewMode('preview')} title="Preview"><Eye size={15} /></button>
-                <span className="w-px h-4 bg-gray-700 mx-1" />
+                <span className="w-px h-4 bg-app-border mx-1" />
+                {headings.length > 0 && (
+                  <>
+                    <button
+                      onClick={() => setTocOpen((v) => !v)}
+                      className={`p-1.5 rounded-app-sm transition-colors duration-200 cursor-pointer ${
+                        tocOpen
+                          ? 'text-accent-light bg-accent/10'
+                          : 'text-app-text-muted hover:text-app-text-secondary hover:bg-app-elevated'
+                      }`}
+                      title={t('tocTitle')}
+                    >
+                      <List size={15} />
+                    </button>
+                    <span className="w-px h-4 bg-app-border mx-1" />
+                  </>
+                )}
               </>
             )}
             <button
+              onClick={toggleTheme}
+              className="p-1.5 rounded-app-sm transition-colors duration-200 text-app-text-muted hover:text-app-text-secondary hover:bg-app-elevated cursor-pointer"
+              title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+            >
+              {theme === 'dark' ? <Sun size={15} /> : <Moon size={15} />}
+            </button>
+            <button
               onClick={() => setSettingsOpen(true)}
-              className="p-1.5 rounded transition-colors text-gray-600 hover:text-gray-300"
+              className="p-1.5 rounded-app-sm transition-colors duration-200 text-app-text-muted hover:text-app-text-secondary hover:bg-app-elevated cursor-pointer"
               title={t('settings')}
             >
               <Settings2 size={15} />
@@ -411,43 +447,49 @@ function App() {
           </div>
         </header>
 
-        {selectedNote ? (
-          <Editor
-            ref={editorRef}
-            content={currentContent}
-            noteId={selectedNoteId}
-            noteName={selectedNote.name}
-            viewMode={viewMode}
-            onUpdate={handleContentUpdate}
-            onHeadingsChange={setHeadings}
-            onSave={handleManualSave}
-          />
-        ) : (
-          <div className="flex-1 flex items-center justify-center">
-            <div className="text-center">
-              <FileText size={56} className="mx-auto text-gray-600 mb-4" />
-              <p className="text-gray-400 mb-4">{t('noNoteSelected')}</p>
-              <button onClick={() => handleCreateNote()} className="px-4 py-2 bg-[#7c3aed] text-white rounded-lg hover:bg-[#6d28d9] transition-colors">
-                {t('createNote')}
-              </button>
+        <div className="flex-1 flex overflow-hidden">
+          {selectedNote ? (
+            <Editor
+              ref={editorRef}
+              content={currentContent}
+              noteId={selectedNoteId}
+              noteName={selectedNote.name}
+              viewMode={viewMode}
+              onUpdate={handleContentUpdate}
+              onHeadingsChange={setHeadings}
+              onSave={handleManualSave}
+            />
+          ) : (
+            <div className="flex-1 flex items-center justify-center">
+              <div className="text-center">
+                <FileText size={48} className="mx-auto text-app-text-muted/50 mb-4" />
+                <p className="text-app-text-muted mb-5 text-sm">{t('noNoteSelected')}</p>
+                <button onClick={() => handleCreateNote()} className="px-5 py-2 bg-accent text-white rounded-app-md text-sm font-medium hover:bg-accent-hover transition-colors duration-200 cursor-pointer">
+                  {t('createNote')}
+                </button>
+              </div>
             </div>
-          </div>
-        )}
-
-        <TableOfContents headings={headings} />
+          )}
+        </div>
       </main>
+
+      <TocOverlay
+        headings={headings}
+        open={tocOpen}
+        onClose={() => setTocOpen(false)}
+      />
 
       {/* Loading overlay */}
       {loading && (
-        <div className="fixed top-3 right-16 z-50 flex items-center gap-2 bg-[#1e1e32]/90 rounded-full px-3 py-1.5 border border-gray-700/60 shadow-lg">
-          <Loader2 size={14} className="text-[#a78bfa] animate-spin" />
-          <span className="text-xs text-gray-400">Saving…</span>
+        <div className="fixed top-3 right-16 z-50 flex items-center gap-2 bg-app-elevated/95 backdrop-blur-sm rounded-full px-3 py-1.5 border border-app-border-subtle shadow-lg">
+          <Loader2 size={14} className="text-accent animate-spin" />
+          <span className="text-xs text-app-text-muted">Saving…</span>
         </div>
       )}
 
       {/* Error toast */}
       {error && (
-        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-red-900/90 text-red-200 text-sm px-4 py-2 rounded-lg border border-red-700/60 shadow-xl max-w-md truncate">
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-red-950/95 backdrop-blur-sm text-red-200 text-sm px-4 py-2.5 rounded-app-md border border-red-800/40 shadow-xl max-w-md truncate">
           {error}
         </div>
       )}

@@ -217,14 +217,14 @@ export const Editor = forwardRef<EditorHandle, EditorProps>(
         value={markdown}
         onChange={handleChange}
         onPaste={handlePaste}
-        className="flex-1 w-full resize-none bg-transparent text-[#d4d4d4] font-mono text-[13.5px] leading-[1.85] tracking-[0.01em] outline-none caret-[#a78bfa]"
+        className="flex-1 w-full resize-none bg-transparent text-app-text-secondary font-mono text-[13.5px] leading-[1.85] tracking-[0.01em] outline-none caret-accent placeholder-app-text-placeholder"
         placeholder="# Start writing markdown..."
         spellCheck={false}
       />
     );
 
     const previewEl = (
-      <div className="note-preview text-[#eaeaea] leading-[1.85]" dangerouslySetInnerHTML={{ __html: previewHtml }} />
+      <div className="note-preview text-app-text-secondary leading-[1.85]" dangerouslySetInnerHTML={{ __html: previewHtml }} />
     );
 
     return (
@@ -247,7 +247,7 @@ export const Editor = forwardRef<EditorHandle, EditorProps>(
                 <div className="flex-1 overflow-y-auto flex flex-col">{textareaEl}</div>
               </div>
             </div>
-            <div onMouseDown={onDividerMouseDown} className="w-1 flex-shrink-0 self-stretch rounded-full bg-gray-700/40 hover:bg-[#7c3aed]/70 cursor-col-resize transition-colors" />
+            <div onMouseDown={onDividerMouseDown} className="w-1 flex-shrink-0 self-stretch rounded-full bg-app-border-subtle hover:bg-accent/70 cursor-col-resize transition-colors duration-200" />
             <div className="flex-1 overflow-hidden min-w-0 flex flex-col">
               <div className="note-editor-card flex-1 flex flex-col p-5 overflow-hidden">
                 <div className="editor-pane-label mb-3">Preview</div>

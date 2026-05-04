@@ -1,96 +1,120 @@
-import { useState } from 'react';
-import { List, X } from 'lucide-react';
+import { createPortal } from 'react-dom';
+import { X } from 'lucide-react';
 import { useLanguage } from '../contexts';
+import { useActiveHeading } from '../hooks/useActiveHeading';
+import type { Heading } from '../utils/headings';
 
-interface Heading {
-  level: number;
-  text: string;
-  id: string;
-}
+/* ─── Scroll helper ──────────────────────────────────────────── */
 
-interface TableOfContentsProps {
-  headings: Heading[];
-}
-
-export function TableOfContents({ headings }: TableOfContentsProps) {
-  const { t } = useLanguage();
-  const [open, setOpen] = useState(false);
-
-  if (!headings.length) return null;
-
-  const scrollTo = (text: string) => {
-    const editorEl = document.querySelector('.note-preview');
-    if (!editorEl) return;
-    for (const node of editorEl.querySelectorAll('h1,h2,h3,h4,h5,h6')) {
-      if (node.textContent?.trim() === text) {
-        node.scrollIntoView({ behavior: 'smooth', block: 'start' });
-        break;
-      }
+function scrollToHeading(text: string) {
+  const editorEl = document.querySelector('.note-preview');
+  if (!editorEl) return;
+  for (const node of editorEl.querySelectorAll('h1,h2,h3,h4,h5,h6')) {
+    if (node.textContent?.trim() === text) {
+      node.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      break;
     }
-  };
+  }
+}
+
+/* ─── Shared heading list ────────────────────────────────────── */
+
+function HeadingList({ headings, activeId, onClick }: {
+  headings: Heading[];
+  activeId: string | null;
+  onClick: (text: string) => void;
+}) {
+  return (
+    <nav className="space-y-0.5">
+      {headings.map((h, i) => {
+        const lvl = Math.min(h.level, 4);
+        const isActive = h.text === activeId;
+        const base = 'relative block w-full text-left py-1 truncate transition-colors duration-150 rounded-app-sm pr-1 cursor-pointer';
+        const style = isActive
+          ? 'text-accent-light bg-accent/10 font-medium'
+          : lvl === 1 ? 'text-sm font-semibold text-app-text hover:text-accent-light hover:bg-accent/5'
+          : lvl === 2 ? 'text-sm text-app-text-secondary hover:text-accent-light hover:bg-accent/5'
+          : lvl === 3 ? 'text-xs text-app-text-muted hover:text-accent-light hover:bg-accent/5'
+          : 'text-xs text-app-text-muted/70 hover:text-accent-light hover:bg-accent/5';
+        return (
+          <button
+            key={i}
+            onClick={() => onClick(h.text)}
+            className={`${base} ${style}`}
+            style={{ paddingLeft: `${(h.level - 1) * 12 + 8}px` }}
+            title={h.text}
+          >
+            {h.level > 1 && (
+              <span aria-hidden
+                className={`absolute top-0 bottom-0 w-px ${isActive ? 'bg-accent/50' : 'bg-app-border-subtle'}`}
+                style={{ left: `${(h.level - 1) * 12}px` }}
+              />
+            )}
+            {h.text}
+          </button>
+        );
+      })}
+    </nav>
+  );
+}
+
+/* ─── TocContent — for embedding in sidebar etc. ────────────── */
+
+interface TocContentProps {
+  headings: Heading[];
+  active: boolean;
+}
+
+export function TocContent({ headings, active }: TocContentProps) {
+  const activeId = useActiveHeading(headings, active);
+
+  if (!headings.length) {
+    return <p className="text-xs text-app-text-muted/60 px-3 py-4">{/* empty */}</p>;
+  }
 
   return (
-    <>
-      {/* Toggle button — always visible when headings exist */}
-      <button
-        onClick={() => setOpen((v) => !v)}
-        className={`fixed right-4 bottom-6 z-40 flex items-center gap-1.5 px-2.5 py-1.5 rounded-full text-xs shadow-lg border transition-colors ${
-          open
-            ? 'bg-[#7c3aed] text-white border-[#7c3aed]'
-            : 'bg-gray-800 text-gray-400 border-gray-700 hover:text-white hover:border-gray-500'
-        }`}
-        title={t('tocOnThisPage')}
-      >
-        <List size={13} />
-        {t('tocTitle')}
-      </button>
+    <div className="p-2">
+      <HeadingList headings={headings} activeId={activeId} onClick={scrollToHeading} />
+    </div>
+  );
+}
 
-      {/* Panel */}
-      {open && (
-        <div
-          className="fixed right-4 bottom-16 z-40 w-52 bg-gray-800 rounded-lg shadow-xl border border-gray-700 flex flex-col"
-          style={{ maxHeight: '60vh' }}
-        >
-          <div className="flex items-center justify-between px-4 pt-3 pb-2 flex-shrink-0">
-            <span className="text-[10px] text-gray-400 uppercase tracking-widest font-medium">{t('tocOnThisPage')}</span>
-            <button
-              onClick={() => setOpen(false)}
-              className="text-gray-500 hover:text-gray-200 transition-colors"
-            >
-              <X size={13} />
-            </button>
-          </div>
-          <nav className="overflow-y-auto px-3 pb-3 space-y-0.5">
-            {headings.map((h, i) => {
-              const lvl = Math.min(h.level, 4);
-              const styleByLevel: Record<number, string> = {
-                1: 'text-sm font-semibold text-gray-100',
-                2: 'text-sm text-gray-300',
-                3: 'text-xs text-gray-400',
-                4: 'text-xs text-gray-500',
-              };
-              return (
-                <button
-                  key={i}
-                  onClick={() => scrollTo(h.text)}
-                  className={`relative block w-full text-left py-1 hover:text-[#a78bfa] truncate transition-colors rounded pr-1 hover:bg-gray-700/50 ${styleByLevel[lvl]}`}
-                  style={{ paddingLeft: `${(h.level - 1) * 12 + 8}px` }}
-                  title={h.text}
-                >
-                  {h.level > 1 && (
-                    <span
-                      aria-hidden
-                      className="absolute top-0 bottom-0 w-px bg-gray-700/60"
-                      style={{ left: `${(h.level - 1) * 12}px` }}
-                    />
-                  )}
-                  {h.text}
-                </button>
-              );
-            })}
-          </nav>
+/* ─── TocOverlay — floating panel via portal ────────────────── */
+
+interface TocOverlayProps {
+  headings: Heading[];
+  open: boolean;
+  onClose: () => void;
+}
+
+export function TocOverlay({ headings, open, onClose }: TocOverlayProps) {
+  const { t } = useLanguage();
+  const activeId = useActiveHeading(headings, open);
+
+  if (!open || !headings.length) return null;
+
+  return createPortal(
+    <>
+      <div className="fixed inset-0 z-[9998]" onClick={onClose} />
+      <div
+        className="fixed right-4 top-12 z-[9999] w-56 bg-app-elevated rounded-app-lg shadow-xl border border-app-border flex flex-col overflow-hidden"
+        style={{ maxHeight: 'min(60vh, 480px)' }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between px-3 py-2 flex-shrink-0 border-b border-app-border-subtle">
+          <span className="text-[10px] text-app-text-muted uppercase tracking-widest font-medium select-none">{t('tocTitle')}</span>
+          <button
+            onClick={onClose}
+            className="text-app-text-muted hover:text-app-text transition-colors duration-150 cursor-pointer p-0.5 rounded-app-sm"
+          >
+            <X size={12} />
+          </button>
         </div>
-      )}
-    </>
+        <div className="flex-1 overflow-y-auto p-2">
+          <HeadingList headings={headings} activeId={activeId} onClick={(text) => { scrollToHeading(text); }} />
+        </div>
+      </div>
+    </>,
+    document.body
   );
 }

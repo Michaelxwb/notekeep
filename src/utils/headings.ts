@@ -1,5 +1,11 @@
-export function getHeadings(content: string): { level: number; text: string; id: string }[] {
-  const headings: { level: number; text: string; id: string }[] = [];
+export interface Heading {
+  level: number;
+  text: string;
+  id: string;
+}
+
+export function getHeadings(content: string): Heading[] {
+  const headings: Heading[] = [];
   for (const line of content.split('\n')) {
     const m = line.match(/^(#{1,6})\s+(.+)/);
     if (m) {

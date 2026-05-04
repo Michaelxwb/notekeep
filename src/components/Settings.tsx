@@ -75,17 +75,17 @@ export function Settings({ onClose, onImportSuccess }: SettingsProps) {
   };
 
   const buttonCls =
-    'flex-1 py-1.5 rounded-lg text-sm bg-white/[0.04] text-gray-400 hover:text-gray-200 hover:bg-white/[0.07] transition-colors';
+    'flex-1 py-1.5 rounded-app-md text-sm bg-app-surface text-app-text-muted hover:text-app-text hover:bg-app-border transition-colors duration-200 cursor-pointer';
 
   return (
     <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50" onClick={onClose}>
       <div
-        className="bg-[#1e1e32] rounded-xl w-80 border border-gray-700/60 shadow-2xl overflow-hidden"
+        className="bg-app-elevated rounded-app-xl w-80 border border-app-border shadow-2xl overflow-hidden"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between px-4 py-3 border-b border-gray-700/40">
-          <span className="text-sm font-semibold text-gray-200">{t('settings')}</span>
-          <button onClick={onClose} className="text-gray-500 hover:text-gray-300 transition-colors p-0.5 rounded">
+        <div className="flex items-center justify-between px-4 py-3 border-b border-app-border-subtle">
+          <span className="text-sm font-semibold text-app-text">{t('settings')}</span>
+          <button onClick={onClose} className="text-app-text-muted hover:text-app-text transition-colors duration-150 p-0.5 rounded-app-sm cursor-pointer">
             <X size={14} />
           </button>
         </div>
@@ -93,16 +93,16 @@ export function Settings({ onClose, onImportSuccess }: SettingsProps) {
         <div className="p-4 space-y-5">
           {/* Language */}
           <div>
-            <p className="text-[10px] text-gray-500 uppercase tracking-wider mb-2">{t('language')}</p>
+            <p className="text-[10px] text-app-text-muted uppercase tracking-wider mb-2">{t('language')}</p>
             <div className="flex gap-2">
               {(['zh', 'en'] as Lang[]).map((l) => (
                 <button
                   key={l}
                   onClick={() => setLang(l)}
-                  className={`flex-1 py-1.5 rounded-lg text-sm transition-colors ${
+                  className={`flex-1 py-1.5 rounded-app-md text-sm transition-colors duration-200 cursor-pointer ${
                     lang === l
-                      ? 'bg-[#7c3aed] text-white'
-                      : 'bg-white/[0.04] text-gray-400 hover:text-gray-200 hover:bg-white/[0.07]'
+                      ? 'bg-accent text-white'
+                      : 'bg-app-surface text-app-text-muted hover:text-app-text hover:bg-app-border'
                   }`}
                 >
                   {l === 'zh' ? t('chinese') : t('english')}
@@ -113,7 +113,7 @@ export function Settings({ onClose, onImportSuccess }: SettingsProps) {
 
           {/* Full backup (zip) */}
           <div>
-            <p className="text-[10px] text-gray-500 uppercase tracking-wider mb-2">{t('fullBackup')}</p>
+            <p className="text-[10px] text-app-text-muted uppercase tracking-wider mb-2">{t('fullBackup')}</p>
             <div className="flex gap-2">
               <button onClick={handleBackup} className={buttonCls}>
                 {t('backupDatabase')}
@@ -126,7 +126,7 @@ export function Settings({ onClose, onImportSuccess }: SettingsProps) {
 
           {/* Incremental note sync (JSON merge) */}
           <div>
-            <p className="text-[10px] text-gray-500 uppercase tracking-wider mb-2">{t('incrementalSync')}</p>
+            <p className="text-[10px] text-app-text-muted uppercase tracking-wider mb-2">{t('incrementalSync')}</p>
             <div className="flex gap-2">
               <button onClick={handleExport} className={buttonCls}>
                 {t('exportData')}

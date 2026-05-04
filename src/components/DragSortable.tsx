@@ -60,15 +60,15 @@ function SortableItemImpl({
     <div ref={setNodeRef} style={style}>
       <div
         onContextMenu={(e) => { e.preventDefault(); onContextMenu?.(e, item); }}
-        className={`flex items-center gap-1 px-1 py-1 rounded group transition-colors ${
-          selected ? 'bg-[#7c3aed]/20 text-white' : 'hover:bg-gray-700/60'
+        className={`flex items-center gap-1 px-1 py-1 rounded-app-sm group transition-colors duration-150 cursor-pointer ${
+          selected ? 'bg-accent/10 text-app-text' : 'text-app-text-secondary hover:bg-app-elevated'
         }`}
       >
         {/* Drag handle — zero width until hover */}
         <span
           {...attributes}
           {...listeners}
-          className="text-gray-600 hover:text-gray-400 cursor-grab active:cursor-grabbing flex-shrink-0 touch-none overflow-hidden w-0 group-hover:w-3 transition-[width] duration-150"
+          className="text-app-text-muted/40 hover:text-app-text-muted cursor-grab active:cursor-grabbing flex-shrink-0 touch-none overflow-hidden w-0 group-hover:w-3 transition-[width] duration-150"
         >
           <GripVertical size={12} />
         </span>
@@ -78,13 +78,13 @@ function SortableItemImpl({
           <button
             onPointerDown={(e) => e.stopPropagation()}
             onClick={() => onToggle?.(item.id)}
-            className="flex-shrink-0 text-[#7c3aed] hover:text-purple-400 transition-colors p-0"
+            className="flex-shrink-0 text-accent hover:text-accent-light transition-colors duration-150 p-0 cursor-pointer"
             tabIndex={-1}
           >
             {expanded ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
           </button>
         ) : (
-          <FileText size={13} className="text-gray-500 flex-shrink-0" />
+          <FileText size={13} className="text-app-text-muted flex-shrink-0" />
         )}
 
         {/* Name */}
@@ -100,11 +100,11 @@ function SortableItemImpl({
               if (e.key === 'Escape') onCancelEdit?.();
             }}
             onPointerDown={(e) => e.stopPropagation()}
-            className="flex-1 bg-gray-600 text-sm text-white rounded px-1 outline-none min-w-0"
+            className="flex-1 bg-app-surface text-sm text-app-text rounded-app-sm px-1 outline-none focus:ring-2 focus:ring-accent/40 min-w-0"
           />
         ) : (
           <button
-            className="flex-1 text-sm text-left truncate text-gray-200 hover:text-white transition-colors"
+            className="flex-1 text-sm text-left truncate text-app-text-secondary hover:text-app-text transition-colors duration-150"
             onPointerDown={(e) => e.stopPropagation()}
             onClick={() => {
               if (item.item_type === 'folder') onToggle?.(item.id);
@@ -120,7 +120,7 @@ function SortableItemImpl({
         <button
           onPointerDown={(e) => e.stopPropagation()}
           onClick={(e) => { e.stopPropagation(); onDelete(item.id); }}
-          className="opacity-0 group-hover:opacity-100 text-gray-500 hover:text-red-400 px-0.5 flex-shrink-0 transition-opacity text-base leading-none"
+          className="opacity-0 group-hover:opacity-100 text-app-text-muted hover:text-red-400 px-0.5 flex-shrink-0 transition-opacity text-base leading-none cursor-pointer"
           title="Delete"
         >
           ×
@@ -201,7 +201,7 @@ function NestedSortable({
               expanded={isExpanded}
             >
               {kids.length > 0 && (
-                <div className="ml-4 mt-0.5 border-l border-gray-700/50 pl-2">
+                <div className="ml-4 mt-0.5 border-l border-app-border-subtle pl-2">
                   <NestedSortable
                     items={kids}
                     childrenByParent={childrenByParent}
@@ -305,14 +305,14 @@ export function SortableFolderContent({
 
       <DragOverlay>
         {activeItem ? (
-          <div className="flex items-center gap-1 px-2 py-1 rounded bg-[#1e1e32] border border-purple-500/30 shadow-xl text-gray-200 text-sm">
+          <div className="flex items-center gap-1 px-2 py-1 rounded-app-sm bg-app-elevated border border-accent/30 shadow-xl text-app-text text-sm backdrop-blur-xl">
             {activeItem.item_type === 'folder'
-              ? <ChevronRight size={13} className="text-[#7c3aed]" />
-              : <FileText size={13} className="text-gray-500" />}
+              ? <ChevronRight size={13} className="text-accent" />
+              : <FileText size={13} className="text-app-text-muted" />}
             <span className="truncate max-w-[140px]">{activeItem.name}</span>
             {activeItem.item_type === 'folder' && (() => {
               const n = countDescendants(activeItem.id, childrenByParent);
-              return n > 0 ? <span className="text-xs text-gray-500 ml-1">+{n}</span> : null;
+              return n > 0 ? <span className="text-xs text-app-text-muted ml-1">+{n}</span> : null;
             })()}
           </div>
         ) : null}
@@ -394,10 +394,10 @@ export function DragSortable({
 
       <DragOverlay>
         {activeItem ? (
-          <div className="flex items-center gap-1 px-2 py-1 rounded bg-[#1e1e32] border border-purple-500/30 shadow-xl text-gray-200 text-sm">
+          <div className="flex items-center gap-1 px-2 py-1 rounded-app-sm bg-app-elevated border border-accent/30 shadow-xl text-app-text text-sm backdrop-blur-xl">
             {activeItem.item_type === 'folder'
-              ? <ChevronRight size={13} className="text-[#7c3aed]" />
-              : <FileText size={13} className="text-gray-500" />}
+              ? <ChevronRight size={13} className="text-accent" />
+              : <FileText size={13} className="text-app-text-muted" />}
             <span className="truncate max-w-[140px]">{activeItem.name}</span>
           </div>
         ) : null}

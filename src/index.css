@@ -1,232 +1,32 @@
 @import "tailwindcss";
 
+/* ─── Theme tokens ──────────────────────────────────────────── */
+
 @theme {
-  --color-background: #1a1a2e;
-  --color-foreground: #eaeaea;
-  --color-accent: #7c3aed;
+  --color-app-bg: #0b0b12;
+  --color-app-sidebar: #111118;
+  --color-app-surface: #16161f;
+  --color-app-elevated: #1c1c28;
+  --color-app-border: #1e1e2e;
+  --color-app-border-subtle: #232333;
+  --color-app-text: #f1f5f9;
+  --color-app-text-secondary: #94a3b8;
+  --color-app-text-muted: #64748b;
+  --color-app-text-placeholder: #475569;
+  --color-app-overlay: rgba(0, 0, 0, 0.55);
+  --color-accent: #8b5cf6;
+  --color-accent-hover: #7c3aed;
+  --color-accent-light: #a78bfa;
+  --radius-app-sm: 6px;
+  --radius-app-md: 8px;
+  --radius-app-lg: 12px;
+  --radius-app-xl: 16px;
 }
 
-/* ─── Calendar ─────────────────────────────────────────────── */
-
-.calendar-center {
-  width: 100% !important;
-}
-
-.calendar-center .rdp-root {
-  --rdp-accent-color: #7c3aed;
-  --rdp-accent-background-color: #7c3aed;
-  margin: 0 auto;
-  width: 100%;
-}
-
-.calendar-center .rdp-months {
-  width: 100%;
-  justify-content: center;
-}
-
-/* Day button base */
-.rdp-day_button {
-  cursor: pointer !important;
-  width: 32px !important;
-  height: 32px !important;
-  border-radius: 4px !important;
-  display: flex !important;
-  align-items: center !important;
-  justify-content: center !important;
-  margin: 0 auto !important;
-  font-size: 0.8rem !important;
-}
-
-/* Selected day */
-.rdp-day_button[aria-selected="true"],
-.rdp-selected .rdp-day_button {
-  background-color: #7c3aed !important;
-  color: #ffffff !important;
-  border-radius: 4px !important;
-  font-weight: 600 !important;
-}
-
-/* Today (not selected) */
-.rdp-today:not(.rdp-selected) .rdp-day_button {
-  border: 1px solid #7c3aed !important;
-  color: #a78bfa !important;
-}
-
-/* Has-notes modifier: small dot */
-.rdp-day_button.rdp-day--hasNotes::after {
-  display: none;
-}
-
-/* Hide default nav — custom MonthCaption renders its own chevrons */
-nav.rdp-nav {
-  display: none !important;
-}
-
-/* Caption / Month label */
-.rdp-month_caption {
-  font-size: 0.85rem !important;
-  font-weight: 600 !important;
-}
-
-/* Weekday header */
-.rdp-weekday {
-  font-size: 0.72rem !important;
-  color: #6b7280 !important;
-  width: 32px !important;
-  text-align: center !important;
-}
-
-/* ─── Search snippet highlight ────────────────────────────── */
-
-.search-snippet mark {
-  background-color: #7c3aed;
-  color: white;
-  border-radius: 2px;
-  padding: 0 2px;
-}
-
-/* ─── Editor surface ─────────────────────────────────────── */
-.editor-bg {
-  background-color: #131325;
-  background-image:
-    radial-gradient(circle at 20% 0%, rgba(124, 58, 237, 0.06), transparent 45%),
-    radial-gradient(circle at 80% 100%, rgba(167, 139, 250, 0.04), transparent 50%),
-    radial-gradient(circle, rgba(167, 139, 250, 0.05) 1px, transparent 1px);
-  background-size: auto, auto, 22px 22px;
-  background-position: 0 0, 0 0, 0 0;
-}
-
-.note-editor-card {
-  position: relative;
-  background: rgba(15, 15, 30, 0.55);
-  backdrop-filter: blur(6px);
-  border: 1px solid rgba(124, 58, 237, 0.16);
-  border-radius: 12px;
-  box-shadow:
-    0 1px 0 rgba(255, 255, 255, 0.03) inset,
-    0 12px 30px -18px rgba(0, 0, 0, 0.6);
-  overflow: hidden;
-}
-
-.note-editor-card::before {
-  content: '';
-  position: absolute;
-  left: 0;
-  top: 14%;
-  bottom: 14%;
-  width: 2px;
-  background: linear-gradient(to bottom, transparent, #7c3aed, transparent);
-  opacity: 0.55;
-  pointer-events: none;
-}
-
-.editor-pane-label {
-  font-size: 10px;
-  font-weight: 600;
-  letter-spacing: 0.18em;
-  text-transform: uppercase;
-  color: #a78bfa;
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-}
-.editor-pane-label::before {
-  content: '';
-  width: 6px;
-  height: 6px;
-  border-radius: 999px;
-  background: #7c3aed;
-  box-shadow: 0 0 8px rgba(124, 58, 237, 0.6);
-}
-
-textarea::placeholder {
-  color: #4b4b6b;
-}
-
-/* ─── Preview panel ──────────────────────────────────────── */
-.note-preview h1 {
-  font-size: 2rem;
-  font-weight: 700;
-  margin: 1.6rem 0 0.85rem;
-  color: #f5f3ff;
-  padding-bottom: 0.45rem;
-  border-bottom: 2px solid #7c3aed;
-  letter-spacing: -0.01em;
-}
-.note-preview h2 {
-  font-size: 1.55rem;
-  font-weight: 700;
-  margin: 1.4rem 0 0.65rem;
-  color: #ede9fe;
-  padding-bottom: 0.3rem;
-  border-bottom: 1px solid rgba(124, 58, 237, 0.35);
-}
-.note-preview h3 {
-  font-size: 1.25rem;
-  font-weight: 600;
-  margin: 1.15rem 0 0.45rem;
-  color: #c4b5fd;
-}
-.note-preview h4 {
-  font-size: 1.05rem;
-  font-weight: 600;
-  margin: 0.9rem 0 0.35rem;
-  color: #a78bfa;
-}
-.note-preview h5 {
-  font-size: 0.9rem;
-  font-weight: 700;
-  margin: 0.75rem 0 0.3rem;
-  color: #9ca3af;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-}
-.note-preview h6 {
-  font-size: 0.8rem;
-  font-weight: 700;
-  margin: 0.6rem 0 0.25rem;
-  color: #6b7280;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-}
-.note-preview ul { list-style: disc;    padding-left: 1.5rem; }
-.note-preview ol { list-style: decimal; padding-left: 1.5rem; }
-.note-preview blockquote {
-  border-left: 3px solid #7c3aed;
-  padding-left: 1rem;
-  color: #9ca3af;
-  margin: 0.75rem 0;
-}
-.note-preview pre {
-  background: #0f0f1a;
-  border-radius: 6px;
-  padding: 0.75rem 1rem;
-  font-family: monospace;
-  overflow-x: auto;
-}
-.note-preview code {
-  background: #0f0f1a;
-  border-radius: 3px;
-  padding: 0.1em 0.3em;
-  font-family: monospace;
-  font-size: 0.875em;
-}
-.note-preview a { color: #a78bfa; text-decoration: underline; }
-.note-preview img { max-width: 100%; border-radius: 4px; margin: 0.5rem 0; }
-
-/* ─── Base ────────────────────────────────────────────────── */
+/* ─── Base ──────────────────────────────────────────────────── */
 
 :root {
-  font-family: 'Inter', system-ui, Avenir, Helvetica, Arial, sans-serif;
-  line-height: 1.5;
-  font-weight: 400;
   color-scheme: dark;
-  color: var(--color-foreground);
-  background-color: var(--color-background);
-  font-synthesis: none;
-  text-rendering: optimizeLegibility;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
 }
 
 html {
@@ -237,10 +37,413 @@ body {
   margin: 0;
   padding: 0;
   height: 100%;
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  font-size: 14px;
+  line-height: 1.6;
+  font-weight: 400;
+  color: var(--color-app-text);
+  background-color: var(--color-app-bg);
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 #root {
   height: 100%;
   display: flex;
   flex-direction: column;
+}
+
+/* ─── Editor background ─────────────────────────────────────── */
+
+.editor-bg {
+  background-color: var(--color-app-bg);
+  background-image:
+    linear-gradient(to bottom, rgba(139, 92, 246, 0.015) 1px, transparent 1px),
+    linear-gradient(to right, rgba(139, 92, 246, 0.01) 1px, transparent 1px);
+  background-size: 48px 48px;
+}
+
+/* ─── Note editor card ──────────────────────────────────────── */
+
+.note-editor-card {
+  position: relative;
+  background: var(--color-card-bg);
+  backdrop-filter: blur(20px);
+  border: 1px solid var(--color-app-border-subtle);
+  border-radius: var(--radius-app-lg);
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.025) inset,
+    0 4px 24px -12px rgba(0, 0, 0, 0.5);
+  overflow: hidden;
+  transition: border-color 200ms ease;
+}
+
+.note-editor-card:focus-within {
+  border-color: rgba(139, 92, 246, 0.18);
+}
+
+/* ─── Editor pane label ─────────────────────────────────────── */
+
+.editor-pane-label {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  color: var(--color-accent-light);
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  user-select: none;
+}
+
+.editor-pane-label::before {
+  content: '';
+  width: 5px;
+  height: 5px;
+  border-radius: 999px;
+  background: var(--color-accent);
+}
+
+/* ─── Textarea placeholder ────────────────────────────────────── */
+
+textarea::placeholder {
+  color: var(--color-app-text-placeholder);
+}
+
+/* ─── Preview panel ─────────────────────────────────────────── */
+
+.note-preview {
+  line-height: 1.85;
+  color: var(--color-app-text-secondary);
+}
+
+.note-preview h1 {
+  font-size: 1.85rem;
+  font-weight: 700;
+  margin: 1.5rem 0 0.75rem;
+  color: var(--color-app-text);
+  padding-bottom: 0.4rem;
+  border-bottom: 2px solid var(--color-accent);
+  letter-spacing: -0.015em;
+  line-height: 1.3;
+}
+
+.note-preview h2 {
+  font-size: 1.45rem;
+  font-weight: 700;
+  margin: 1.3rem 0 0.6rem;
+  color: var(--color-preview-h2);
+  padding-bottom: 0.3rem;
+  border-bottom: 1px solid rgba(139, 92, 246, 0.3);
+  line-height: 1.35;
+}
+
+.note-preview h3 {
+  font-size: 1.2rem;
+  font-weight: 600;
+  margin: 1.1rem 0 0.4rem;
+  color: var(--color-accent-light);
+  line-height: 1.4;
+}
+
+.note-preview h4 {
+  font-size: 1.05rem;
+  font-weight: 600;
+  margin: 0.85rem 0 0.3rem;
+  color: var(--color-preview-h4);
+}
+
+.note-preview h5 {
+  font-size: 0.9rem;
+  font-weight: 600;
+  margin: 0.7rem 0 0.25rem;
+  color: var(--color-app-text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.note-preview h6 {
+  font-size: 0.8rem;
+  font-weight: 600;
+  margin: 0.6rem 0 0.25rem;
+  color: var(--color-app-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+}
+
+.note-preview p {
+  margin: 0.5rem 0;
+}
+
+.note-preview ul {
+  list-style: disc;
+  padding-left: 1.5rem;
+  margin: 0.4rem 0;
+}
+
+.note-preview ol {
+  list-style: decimal;
+  padding-left: 1.5rem;
+  margin: 0.4rem 0;
+}
+
+.note-preview li {
+  margin: 0.2rem 0;
+}
+
+.note-preview blockquote {
+  border-left: 3px solid var(--color-accent);
+  padding: 0.5rem 0 0.5rem 1rem;
+  color: var(--color-app-text-secondary);
+  margin: 0.75rem 0;
+}
+
+.note-preview pre {
+  background: var(--color-app-bg);
+  border: 1px solid var(--color-app-border-subtle);
+  border-radius: var(--radius-app-md);
+  padding: 0.75rem 1rem;
+  font-family: 'JetBrains Mono', 'Fira Code', monospace;
+  font-size: 0.85em;
+  overflow-x: auto;
+  line-height: 1.65;
+}
+
+.note-preview code {
+  background: rgba(139, 92, 246, 0.1);
+  border-radius: 3px;
+  padding: 0.15em 0.35em;
+  font-family: 'JetBrains Mono', 'Fira Code', monospace;
+  font-size: 0.875em;
+  color: var(--color-accent-light);
+}
+
+.note-preview pre code {
+  background: transparent;
+  color: var(--color-app-text-secondary);
+  padding: 0;
+}
+
+.note-preview a {
+  color: var(--color-accent-light);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.note-preview a:hover {
+  color: var(--color-accent);
+}
+
+.note-preview img {
+  max-width: 100%;
+  border-radius: var(--radius-app-sm);
+  margin: 0.5rem 0;
+}
+
+.note-preview hr {
+  border: none;
+  border-top: 1px solid var(--color-app-border-subtle);
+  margin: 1.2rem 0;
+}
+
+.note-preview table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 0.75rem 0;
+}
+
+.note-preview th,
+.note-preview td {
+  border: 1px solid var(--color-app-border-subtle);
+  padding: 0.4rem 0.75rem;
+  text-align: left;
+}
+
+.note-preview th {
+  background: rgba(139, 92, 246, 0.06);
+  font-weight: 600;
+  color: var(--color-app-text);
+}
+
+/* ─── Calendar ───────────────────────────────────────────────── */
+
+.calendar-center {
+  width: 100% !important;
+}
+
+.calendar-center .rdp-root {
+  --rdp-accent-color: var(--color-accent);
+  --rdp-accent-background-color: var(--color-accent);
+  margin: 0 auto;
+  width: 100%;
+}
+
+.calendar-center .rdp-months {
+  width: 100%;
+  justify-content: center;
+}
+
+.rdp-day_button {
+  cursor: pointer !important;
+  width: 30px !important;
+  height: 30px !important;
+  border-radius: var(--radius-app-sm) !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  margin: 0 auto !important;
+  font-size: 0.78rem !important;
+  transition: background-color 150ms ease;
+}
+
+.rdp-day_button:hover:not([aria-selected="true"]) {
+  background-color: rgba(139, 92, 246, 0.12) !important;
+}
+
+.rdp-day_button[aria-selected="true"],
+.rdp-selected .rdp-day_button {
+  background-color: var(--color-accent) !important;
+  color: #ffffff !important;
+  border-radius: var(--radius-app-sm) !important;
+  font-weight: 600 !important;
+}
+
+.rdp-today:not(.rdp-selected) .rdp-day_button {
+  border: 1px solid rgba(139, 92, 246, 0.4) !important;
+  color: var(--color-accent-light) !important;
+}
+
+.rdp-day_button.rdp-day--hasNotes::after {
+  display: none;
+}
+
+nav.rdp-nav {
+  display: none !important;
+}
+
+.rdp-month_caption {
+  font-size: 0.82rem !important;
+  font-weight: 600 !important;
+  color: var(--color-app-text) !important;
+}
+
+.rdp-weekday {
+  font-size: 0.7rem !important;
+  color: var(--color-app-text-muted) !important;
+  width: 30px !important;
+  text-align: center !important;
+}
+
+/* ─── Search snippet highlight ──────────────────────────────── */
+
+.search-snippet mark {
+  background-color: var(--color-accent);
+  color: white;
+  border-radius: 2px;
+  padding: 0 1px;
+}
+
+/* ─── Scrollbar ──────────────────────────────────────────────── */
+
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.15);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(148, 163, 184, 0.25);
+}
+
+/* ─── Focus ring ─────────────────────────────────────────────── */
+
+*:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
+/* ─── Reduced motion ─────────────────────────────────────────── */
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* ─── Selection ──────────────────────────────────────────────── */
+
+::selection {
+  background: rgba(139, 92, 246, 0.3);
+  color: var(--color-app-text);
+}
+
+/* ─── Light mode overrides ───────────────────────────────────── */
+
+:root {
+  --color-card-bg: rgba(22, 22, 31, 0.65);
+  --color-preview-h2: #e2e8f0;
+  --color-preview-h4: #c4b5fd;
+}
+
+html {
+  transition: color 200ms ease, background-color 200ms ease;
+}
+
+:root.light {
+  --color-app-bg: #f8fafc;
+  --color-app-sidebar: #f1f5f9;
+  --color-app-surface: #ffffff;
+  --color-app-elevated: #ffffff;
+  --color-app-border: #e2e8f0;
+  --color-app-border-subtle: #cbd5e1;
+  --color-app-text: #0f172a;
+  --color-app-text-secondary: #475569;
+  --color-app-text-muted: #64748b;
+  --color-app-text-placeholder: #94a3b8;
+  --color-app-overlay: rgba(0, 0, 0, 0.3);
+
+  --color-accent: #7c3aed;
+  --color-accent-hover: #6d28d9;
+  --color-accent-light: #8b5cf6;
+
+  --color-card-bg: rgba(255, 255, 255, 0.85);
+  --color-preview-h2: #1e293b;
+  --color-preview-h4: #7c3aed;
+
+  color-scheme: light;
+}
+
+:root.light .note-editor-card {
+  box-shadow:
+    0 1px 0 rgba(0, 0, 0, 0.04) inset,
+    0 4px 24px -12px rgba(0, 0, 0, 0.08);
+}
+
+:root.light .editor-bg {
+  background-image:
+    linear-gradient(to bottom, rgba(124, 58, 237, 0.04) 1px, transparent 1px),
+    linear-gradient(to right, rgba(124, 58, 237, 0.03) 1px, transparent 1px);
+}
+
+:root.light ::-webkit-scrollbar-thumb {
+  background: rgba(100, 116, 139, 0.2);
+}
+
+:root.light ::-webkit-scrollbar-thumb:hover {
+  background: rgba(100, 116, 139, 0.35);
 }

@@ -6,7 +6,9 @@ import { ContextMenu } from './ContextMenu';
 import { Dialog } from './Dialog';
 import { SortableFolderContent } from './DragSortable';
 import { useLanguage } from '../contexts';
-import { Plus, Trash2, BookOpen, FolderPlus, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Plus, Trash2, BookOpen, FolderPlus, ChevronLeft, ChevronRight, List } from 'lucide-react';
+import { TocContent } from './TableOfContents';
+import type { Heading } from '../utils/headings';
 
 function CalendarCaption({ calendarMonth }: MonthCaptionProps) {
   const { goToMonth, previousMonth, nextMonth } = useDayPicker();
@@ -15,17 +17,17 @@ function CalendarCaption({ calendarMonth }: MonthCaptionProps) {
       <button
         onClick={() => previousMonth && goToMonth(previousMonth)}
         disabled={!previousMonth}
-        className="p-1 text-white hover:bg-white/15 rounded transition-colors disabled:opacity-30"
+        className="p-1 text-app-text-secondary hover:bg-app-elevated rounded-app-sm transition-colors duration-200 cursor-pointer disabled:opacity-30"
       >
         <ChevronLeft size={13} />
       </button>
-      <span className="text-sm font-semibold text-[#eaeaea]">
+      <span className="text-sm font-semibold text-app-text">
         {format(calendarMonth.date, 'MMMM yyyy')}
       </span>
       <button
         onClick={() => nextMonth && goToMonth(nextMonth)}
         disabled={!nextMonth}
-        className="p-1 text-white hover:bg-white/15 rounded transition-colors disabled:opacity-30"
+        className="p-1 text-app-text-secondary hover:bg-app-elevated rounded-app-sm transition-colors duration-200 cursor-pointer disabled:opacity-30"
       >
         <ChevronRight size={13} />
       </button>
@@ -35,6 +37,7 @@ function CalendarCaption({ calendarMonth }: MonthCaptionProps) {
 
 interface SidebarProps {
   items: NoteItem[];
+  headings: Heading[];
   selectedDate: Date | undefined;
   onDateSelect: (date: Date | undefined) => void;
   onCreateNote: (parentId?: string) => Promise<string | undefined>;
@@ -63,6 +66,7 @@ function saveExpandedFolders(ids: Set<string>) {
 
 export function Sidebar({
   items,
+  headings,
   selectedDate,
   onDateSelect,
   onCreateNote,
@@ -80,7 +84,7 @@ export function Sidebar({
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; item: NoteItem } | null>(null);
   const [renameDialog, setRenameDialog] = useState<{ id: string; name: string } | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<'notes' | 'diary'>('notes');
+  const [activeTab, setActiveTab] = useState<'notes' | 'diary' | 'outline'>('notes');
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingName, setEditingName] = useState('');
 
@@ -165,31 +169,42 @@ export function Sidebar({
   }, [items]);
 
   return (
-    <aside className="w-64 border-r border-gray-700/60 flex flex-col h-full bg-[#161625] select-none">
+    <aside className="w-64 border-r border-app-border-subtle flex flex-col h-full bg-app-sidebar select-none">
 
       {/* ── Tab header ──────────────────────────────────── */}
-      <div className="h-12 border-b border-gray-700/60 flex items-center px-3 gap-1 flex-shrink-0">
+      <div className="h-11 border-b border-app-border-subtle flex items-center px-3 gap-1 flex-shrink-0">
         <button
           onClick={() => setActiveTab('notes')}
-          className={`flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-medium transition-colors ${
-            activeTab === 'notes' ? 'bg-white/[0.07] text-gray-200' : 'text-gray-500 hover:text-gray-300'
+          className={`flex items-center gap-1.5 px-2.5 py-1 rounded-app-sm text-xs font-medium transition-colors duration-200 cursor-pointer ${
+            activeTab === 'notes' ? 'bg-accent/10 text-app-text' : 'text-app-text-muted hover:text-app-text-secondary'
           }`}
         >
           {t('notes')}
         </button>
         <button
           onClick={() => setActiveTab('diary')}
-          className={`flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-medium transition-colors ${
-            activeTab === 'diary' ? 'bg-white/[0.07] text-gray-200' : 'text-gray-500 hover:text-gray-300'
+          className={`flex items-center gap-1.5 px-2.5 py-1 rounded-app-sm text-xs font-medium transition-colors duration-200 cursor-pointer ${
+            activeTab === 'diary' ? 'bg-accent/10 text-app-text' : 'text-app-text-muted hover:text-app-text-secondary'
           }`}
         >
           <BookOpen size={11} />
           {t('diary')}
         </button>
+        {headings.length > 0 && (
+          <button
+            onClick={() => setActiveTab('outline')}
+            className={`flex items-center gap-1.5 px-2.5 py-1 rounded-app-sm text-xs font-medium transition-colors duration-200 cursor-pointer ${
+              activeTab === 'outline' ? 'bg-accent/10 text-app-text' : 'text-app-text-muted hover:text-app-text-secondary'
+            }`}
+          >
+            <List size={11} />
+            {t('tocTitle')}
+          </button>
+        )}
         <div className="ml-auto flex items-center gap-1">
           {activeTab === 'notes' && <>
-            <button onClick={() => onCreateFolder()} className="p-1 text-gray-500 hover:text-gray-200 hover:bg-gray-700 rounded transition-colors" title="New Folder"><FolderPlus size={12} /></button>
-            <button onClick={() => onCreateNote()} className="p-1 text-gray-500 hover:text-gray-200 hover:bg-gray-700 rounded transition-colors" title="New Note"><Plus size={12} /></button>
+            <button onClick={() => onCreateFolder()} className="p-1 text-app-text-muted hover:text-app-text hover:bg-app-elevated rounded-app-sm transition-colors duration-200 cursor-pointer" title="New Folder"><FolderPlus size={12} /></button>
+            <button onClick={() => onCreateNote()} className="p-1 text-app-text-muted hover:text-app-text hover:bg-app-elevated rounded-app-sm transition-colors duration-200 cursor-pointer" title="New Note"><Plus size={12} /></button>
           </>}
           {activeTab === 'diary' && (() => {
             const targetDate = selectedDateStr ?? format(new Date(), 'yyyy-MM-dd');
@@ -197,11 +212,11 @@ export function Sidebar({
             const label = targetDate === format(new Date(), 'yyyy-MM-dd') ? t('today') : targetDate;
             return (
               <div className="flex items-center gap-1.5">
-                <span className="text-[10px] text-gray-600 tabular-nums">{label}</span>
+                <span className="text-[10px] text-app-text-muted tabular-nums">{label}</span>
                 <button
                   onClick={onCreateDiary}
                   disabled={alreadyExists}
-                  className={`p-1 rounded transition-colors ${alreadyExists ? 'text-gray-700 cursor-not-allowed' : 'text-gray-500 hover:text-gray-200 hover:bg-gray-700'}`}
+                  className={`p-1 rounded-app-sm transition-colors duration-200 ${alreadyExists ? 'text-app-text-muted/40 cursor-not-allowed' : 'text-app-text-muted hover:text-app-text hover:bg-app-elevated cursor-pointer'}`}
                   title={alreadyExists ? t('entryExists') : t('newDiary')}
                 >
                   <Plus size={12} />
@@ -234,7 +249,7 @@ export function Sidebar({
               onToggle={toggleFolder}
             />
             {allRootItems.length === 0 && (
-              <p className="text-xs text-gray-600 px-1 py-2">{t('noNotes')}</p>
+              <p className="text-xs text-app-text-muted/60 px-1 py-2">{t('noNotes')}</p>
             )}
           </div>
         </div>
@@ -245,7 +260,7 @@ export function Sidebar({
         <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
           <button
             onClick={() => setCalendarOpen((v) => !v)}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-[10px] text-gray-500 hover:text-gray-300 uppercase tracking-wider transition-colors flex-shrink-0 border-b border-gray-700/30"
+            className="flex items-center gap-1.5 px-3 py-1.5 text-[10px] text-app-text-muted hover:text-app-text-secondary uppercase tracking-wider transition-colors duration-200 flex-shrink-0 border-b border-app-border-subtle cursor-pointer"
           >
             <BookOpen size={10} />
             {t('calendar')}
@@ -253,7 +268,7 @@ export function Sidebar({
           </button>
 
           {calendarOpen && (
-            <div className="px-2 pb-1 flex-shrink-0 border-b border-gray-700/30">
+            <div className="px-2 pb-1 flex-shrink-0 border-b border-app-border-subtle">
               <DayPicker
                 mode="single"
                 selected={selectedDate}
@@ -268,24 +283,24 @@ export function Sidebar({
 
           <div className="flex-1 overflow-y-auto px-2 py-2 space-y-3">
             {diaryMonthGroups.size === 0 && (
-              <p className="text-xs text-gray-600 px-1 py-1">{t('noDiary')}</p>
+              <p className="text-xs text-app-text-muted/60 px-1 py-1">{t('noDiary')}</p>
             )}
             {Array.from(diaryMonthGroups.entries()).map(([month, entries]) => (
               <div key={month}>
-                <div className="text-[10px] text-gray-500 uppercase tracking-wider font-medium px-1 mb-1">
+                <div className="text-[10px] text-app-text-muted uppercase tracking-wider font-medium px-1 mb-1">
                   {format(new Date(month + '-01'), 'MMMM yyyy')}
                 </div>
                 <div className="space-y-0.5">
                   {entries.map((entry) => (
                     <div
                       key={entry.id}
-                      className={`flex items-center gap-2 px-2 py-1.5 rounded transition-colors group cursor-pointer ${
-                        selectedNoteId === entry.id ? 'bg-[#7c3aed]/20 text-white' : 'text-gray-300 hover:bg-gray-700/60 hover:text-white'
+                      className={`flex items-center gap-2 px-2 py-1.5 rounded-app-sm transition-colors duration-150 group cursor-pointer ${
+                        selectedNoteId === entry.id ? 'bg-accent/10 text-app-text' : 'text-app-text-secondary hover:bg-app-elevated hover:text-app-text'
                       }`}
                       onClick={() => editingId !== entry.id && onSelectNote(entry.id)}
                       onContextMenu={(e) => openContextMenu(e, entry)}
                     >
-                      <span className="text-[11px] text-gray-500 w-5 text-center flex-shrink-0 tabular-nums">
+                      <span className="text-[11px] text-app-text-muted w-5 text-center flex-shrink-0 tabular-nums">
                         {entry.date?.slice(8)}
                       </span>
                       {editingId === entry.id ? (
@@ -300,7 +315,7 @@ export function Sidebar({
                             if (e.key === 'Escape') cancelEdit();
                           }}
                           onClick={(e) => e.stopPropagation()}
-                          className="flex-1 bg-gray-600 text-sm text-white rounded px-1 outline-none min-w-0"
+                          className="flex-1 bg-app-surface text-sm text-app-text rounded-app-sm px-1 outline-none focus:ring-2 focus:ring-accent/40 min-w-0"
                         />
                       ) : (
                         <span
@@ -312,7 +327,7 @@ export function Sidebar({
                       )}
                       <button
                         onClick={(e) => { e.stopPropagation(); setDeleteConfirm(entry.id); }}
-                        className="opacity-0 group-hover:opacity-100 text-gray-500 hover:text-red-400 transition-opacity flex-shrink-0"
+                        className="opacity-0 group-hover:opacity-100 text-app-text-muted hover:text-red-400 transition-opacity flex-shrink-0 cursor-pointer"
                       >
                         <Trash2 size={10} />
                       </button>
@@ -322,6 +337,13 @@ export function Sidebar({
               </div>
             ))}
           </div>
+        </div>
+      )}
+
+      {/* ── Outline tab ──────────────────────────────────── */}
+      {activeTab === 'outline' && (
+        <div className="flex-1 overflow-y-auto">
+          <TocContent headings={headings} active={activeTab === 'outline'} />
         </div>
       )}
 
@@ -356,6 +378,7 @@ export function Sidebar({
 
       {/* ── Rename dialog ─────────────────────────────────── */}
       <Dialog
+        key={renameDialog?.id ?? 'closed'}
         open={!!renameDialog}
         title={t('rename')}
         initialValue={renameDialog?.name ?? ''}
@@ -369,16 +392,16 @@ export function Sidebar({
       {/* ── Delete confirmation ──────────────────────────── */}
       {deleteConfirm && (
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
-          <div className="bg-[#1e1e32] rounded-xl p-5 w-72 border border-gray-700 shadow-2xl">
-            <h3 className="text-sm font-semibold mb-2">{t('deleteTitle')}</h3>
-            <p className="text-gray-400 text-xs mb-5">{t('deleteDesc')}</p>
+          <div className="bg-app-elevated rounded-app-lg p-5 w-72 border border-app-border shadow-2xl">
+            <h3 className="text-sm font-semibold text-app-text mb-2">{t('deleteTitle')}</h3>
+            <p className="text-app-text-muted text-xs mb-5">{t('deleteDesc')}</p>
             <div className="flex justify-end gap-2">
-              <button onClick={() => setDeleteConfirm(null)} className="px-3 py-1.5 text-xs text-gray-400 hover:text-white">
+              <button onClick={() => setDeleteConfirm(null)} className="px-3 py-1.5 text-xs text-app-text-muted hover:text-app-text transition-colors duration-150 cursor-pointer rounded-app-sm">
                 {t('cancel')}
               </button>
               <button
                 onClick={() => { onDeleteItem(deleteConfirm); setDeleteConfirm(null); }}
-                className="px-3 py-1.5 text-xs bg-red-600 text-white rounded-lg hover:bg-red-700"
+                className="px-3 py-1.5 text-xs bg-red-600 text-white rounded-app-md hover:bg-red-700 transition-colors duration-150 cursor-pointer"
               >
                 {t('delete')}
               </button>
